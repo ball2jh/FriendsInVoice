@@ -4,6 +4,8 @@
 
 **[English](README.md)** · [التركيب](#التركيب) · [المساهمة](CONTRIBUTING.md) · [الرخصة](LICENSE)
 
+[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://paypal.me/mfsafadi)
+
 FriendsInVoice إضافة لـ **[Vencord](https://vencord.dev)** ([GitHub](https://github.com/Vendicated/Vencord))، وهو تعديل مفتوح المصدر لديسكورد.
 
 بتشوف بنظرة وحدة **أصحابك بأي روم صوتي، مين معهم، وبتدخل الروم بضغطة وحدة**، من صفحة كاملة جوّا ديسكورد. وبيجيك إشعار لما صاحبك يدخل روم صوتي (حتى لو مبيّن أوفلاين) أو يصير أونلاين، وفي قائمة "Run away" بتخليك تصير مخفي بضغطة وحدة.
@@ -136,6 +138,14 @@ FriendsInVoice مفتوحة المصدر، وأي مساهمة مرحّب فيه
 
 - [AutoSwitchStatus](https://github.com/mPhpMaster/AutoSwitchStatus): بتخليك مخفي تلقائياً لما ما تكون بمكالمة، وبترجعك أونلاين أول ما تدخل وحدة.
 - [Vencord](https://vencord.dev): تعديل ديسكورد اللي الإضافة مبنية عليه.
+
+## ادعم المشروع
+
+إذا FriendsInVoice عجبتك وأفادتك، بتقدر تدعم تطويرها بتبرّع:
+
+[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://paypal.me/mfsafadi)
+
+شكراً إلك! والنجمة على GitHub، وبلاغات الأخطاء، والأفكار كمان بتساعد كتير.
 
 ## الرخصة
 

@@ -2,6 +2,8 @@
 
 **[العربية](README.ar.md)** · [Install](#install) · [Contributing](CONTRIBUTING.md) · [License](LICENSE)
 
+[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://paypal.me/mfsafadi)
+
 FriendsInVoice is a plugin for **[Vencord](https://vencord.dev)** ([GitHub](https://github.com/Vendicated/Vencord)), the open-source Discord client mod.
 
 See at a glance **which voice rooms your friends are in, who is with them, and join with one click**, all from a full page inside Discord. Get notified when a friend joins a voice room (even if they look offline) or comes online, and keep a "Run away" list that lets you go invisible in one click.
@@ -134,6 +136,14 @@ FriendsInVoice is open source and contributions are welcome: bug reports, ideas,
 
 - [AutoSwitchStatus](https://github.com/mPhpMaster/AutoSwitchStatus): automatically go invisible when you're not in a call, and back online when you join one.
 - [Vencord](https://vencord.dev): the Discord client mod this plugin is built for.
+
+## Support
+
+If FriendsInVoice is useful to you, you can support its development with a donation:
+
+[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://paypal.me/mfsafadi)
+
+Thank you! Stars on GitHub, bug reports and ideas help a lot too.
 
 ## License
 
