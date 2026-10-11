@@ -143,6 +143,8 @@ If FriendsInVoice is useful to you, you can support its development with a donat
 
 [![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://paypal.me/mfsafadi)
 
+You'll also find a **❤️ Donate** link at the bottom of the Friends in Voice page in Discord.
+
 Thank you! Stars on GitHub, bug reports and ideas help a lot too.
 
 ## License

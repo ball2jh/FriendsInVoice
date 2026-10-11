@@ -145,6 +145,8 @@ FriendsInVoice مفتوحة المصدر، وأي مساهمة مرحّب فيه
 
 [![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://paypal.me/mfsafadi)
 
+وكمان في رابط **❤️ Donate** تحت بصفحة Friends in Voice جوّا ديسكورد.
+
 شكراً إلك! والنجمة على GitHub، وبلاغات الأخطاء، والأفكار كمان بتساعد كتير.
 
 ## الرخصة

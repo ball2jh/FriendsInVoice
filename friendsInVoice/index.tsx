@@ -22,8 +22,9 @@ import { Channel, User } from "@vencord/discord-types";
 import { findByPropsLazy, wreq } from "@webpack";
 import { ChannelActionCreators, ChannelRouter, ChannelStore, ContextMenuApi, GuildMemberStore, GuildStore, Menu, openUserProfileModal, PermissionsBits, PermissionStore, PresenceStore, React, ReactDOM, RelationshipStore, SelectedChannelStore, SelectedGuildStore, showToast, Tooltip, useEffect, useMemo, useReducer, UserStore, UserUtils, useState, useStateFromStores, VoiceStateStore } from "@webpack/common";
 
-const VERSION = "1.4.1";
+const VERSION = "1.4.2";
 const REPO = "mPhpMaster/FriendsInVoice";
+const DONATE_URL = "https://paypal.me/mfsafadi";
 
 const cl = classNameFactory("vc-fiv-");
 
@@ -907,6 +908,8 @@ function FriendsInVoicePage() {
                     Discord only shares voice activity and online status for servers you're also in, so people in servers you haven't joined won't show up.
                     {" · "}v{VERSION}{" · "}
                     <span className={cl("link")} onClick={() => checkForUpdate(true)}>Check for updates</span>
+                    {" · "}
+                    <span className={cl("link")} title="Like the plugin? Support it on PayPal" onClick={() => VencordNative.native.openExternal(DONATE_URL)}>❤️ Donate</span>
                 </div>
             </div>
         </div>
