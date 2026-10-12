@@ -196,7 +196,9 @@ build_vencord() {
 
 inject_vencord() {
     info "Patching Discord ($BRANCH) to load Vencord from $1..."
-    if ! (cd "$1" && pnpm inject -- -install -branch "$BRANCH"); then
+    # call Vencord's installer directly: going through "pnpm inject" adds an extra "--" with pnpm 12+,
+    # which makes the installer ignore -branch and ask which Discord to patch
+    if ! (cd "$1" && node scripts/runInstaller.mjs -- -install -branch "$BRANCH"); then
         if [ "$OS" = "Darwin" ]; then
             warn "If macOS blocked it: System Settings -> Privacy & Security -> App Management -> turn on Terminal, then run this again."
         fi

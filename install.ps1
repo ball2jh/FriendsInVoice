@@ -128,7 +128,9 @@ function Inject-Vencord($dir) {
     Info "Patching Discord ($Branch) to load Vencord from $dir..."
     Push-Location $dir
     try {
-        pnpm inject -- -install -branch $Branch
+        # call Vencord's installer directly: going through "pnpm inject" adds an extra "--" with pnpm 12+,
+        # which makes the installer ignore -branch and ask which Discord to patch
+        node scripts/runInstaller.mjs -- -install -branch $Branch
         if ($LASTEXITCODE) { throw "Patching Discord failed." }
     } finally { Pop-Location }
 }
