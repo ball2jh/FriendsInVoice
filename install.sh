@@ -194,16 +194,62 @@ build_vencord() {
     ) || die "Building Vencord failed (see the messages above)."
 }
 
-inject_vencord() {
-    info "Patching Discord ($BRANCH) to load Vencord from $1..."
+quit_discord() {
+    [ "$OS" = "Darwin" ] || return 0
+    osascript -e "quit app \"$DISCORD_NAME\"" >/dev/null 2>&1 || true
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+        pgrep -x "$DISCORD_NAME" >/dev/null 2>&1 || return 0
+        sleep 1
+    done
+    pkill -x "$DISCORD_NAME" >/dev/null 2>&1 || true
+    sleep 2
+}
+
+run_vencord_installer() {
     # call Vencord's installer directly: going through "pnpm inject" adds an extra "--" with pnpm 12+,
     # which makes the installer ignore -branch and ask which Discord to patch
-    if ! (cd "$1" && node scripts/runInstaller.mjs -- -install -branch "$BRANCH"); then
-        if [ "$OS" = "Darwin" ]; then
-            warn "If macOS blocked it: System Settings -> Privacy & Security -> App Management -> turn on Terminal, then run this again."
-        fi
-        die "Patching Discord failed."
+    (cd "$1" && node scripts/runInstaller.mjs -- -install -branch "$BRANCH")
+}
+
+# true if Discord now loads Vencord from the given folder
+discord_uses() {
+    same_dir "$(patched_vencord_dir "$DISCORD_RES")" "$1"
+}
+
+inject_vencord() {
+    info "Patching Discord ($BRANCH) to load Vencord from $1..."
+    if [ "$OS" = "Darwin" ]; then
+        info "Closing Discord first..."
+        quit_discord
     fi
+
+    # Vencord's installer can report success even when macOS silently blocked the change,
+    # so check where Discord actually loads Vencord from afterwards
+    run_vencord_installer "$1" || true
+    discord_uses "$1" && return 0
+
+    if [ "$OS" = "Darwin" ]; then
+        warn "macOS blocked Terminal from updating Discord."
+        open "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles" >/dev/null 2>&1 || true
+        warn "In the Settings window that just opened (Privacy & Security -> App Management):"
+        warn "  1. Turn ON \"Terminal\" (or the terminal app you're using)."
+        warn "  2. If it isn't in the list, click +, open Applications -> Utilities and choose Terminal."
+        printf 'Press Enter when it is turned on... '
+        read -r _ </dev/tty || true
+
+        quit_discord
+        run_vencord_installer "$1" || true
+        discord_uses "$1" && return 0
+
+        die "Discord still loads the old Vencord. macOS applies the new permission only after Terminal restarts:
+  1. Quit Terminal (Cmd+Q) and open it again.
+  2. Run this installer again (answer N to uninstall, then Y to update)."
+    fi
+
+    die "Patching Discord didn't take effect: Discord still loads Vencord from '$(patched_vencord_dir "$DISCORD_RES")'.
+If Discord is installed system-wide, run Vencord's installer with sudo, then run this installer again:
+  cd \"$1\" && sudo node scripts/runInstaller.mjs -- -install -branch $BRANCH"
 }
 
 same_dir() {

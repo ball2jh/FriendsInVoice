@@ -133,6 +133,13 @@ function Inject-Vencord($dir) {
         node scripts/runInstaller.mjs -- -install -branch $Branch
         if ($LASTEXITCODE) { throw "Patching Discord failed." }
     } finally { Pop-Location }
+
+    # make sure Discord really loads Vencord from this folder now
+    $now = Get-PatchedVencordDir
+    $nowPath = if ($now) { (Resolve-Path $now -ErrorAction SilentlyContinue).Path }
+    if (-not $nowPath -or $nowPath -ne (Resolve-Path $dir).Path) {
+        throw "Patching Discord didn't take effect (Discord still loads Vencord from '$now'). Fully quit Discord (tray icon -> Quit) and run the installer again."
+    }
 }
 
 # ---------- detect ----------
