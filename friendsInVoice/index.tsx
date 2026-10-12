@@ -7,6 +7,7 @@
 import "./style.css";
 
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
+import { addMessageAccessory, removeMessageAccessory } from "@api/MessageAccessories";
 import { showNotification } from "@api/Notifications";
 import { isPluginEnabled } from "@api/PluginManager";
 import { addServerListElement, removeServerListElement, ServerListRenderPosition } from "@api/ServerList";
@@ -22,7 +23,9 @@ import { Channel, User } from "@vencord/discord-types";
 import { findByPropsLazy, wreq } from "@webpack";
 import { ChannelActionCreators, ChannelRouter, ChannelStore, ContextMenuApi, GuildMemberStore, GuildStore, Menu, openUserProfileModal, PermissionsBits, PermissionStore, PresenceStore, React, ReactDOM, RelationshipStore, SelectedChannelStore, SelectedGuildStore, showToast, Tooltip, useEffect, useMemo, useReducer, UserStore, UserUtils, useState, useStateFromStores, VoiceStateStore } from "@webpack/common";
 
-const VERSION = "1.4.4";
+import { SmartReplies } from "./smartReplies";
+
+const VERSION = "1.5.0";
 const REPO = "mPhpMaster/FriendsInVoice";
 const DONATE_URL = "https://paypal.me/mfsafadi";
 
@@ -31,11 +34,32 @@ const cl = classNameFactory("vc-fiv-");
 const { selectVoiceChannel } = findByPropsLazy("selectVoiceChannel", "selectChannel");
 const StatusSettings = getUserSettingLazy<string>("status", "status")!;
 
-const settings = definePluginSettings({
+export const settings = definePluginSettings({
     notifyOnce: {
         type: OptionType.BOOLEAN,
         description: "Remove someone from \"Notify me when online\" after their first notification",
         default: true,
+    },
+    smartReplies: {
+        type: OptionType.BOOLEAN,
+        description: "Suggest replies under the latest message someone sends you in a DM (click one to put it in the message box)",
+        default: true,
+    },
+    smartRepliesAi: {
+        type: OptionType.BOOLEAN,
+        description: "Add a \"✨ Smarter replies\" button that asks Claude (AI) for replies. Needs an API key below; when you click it, the recent messages of that chat are sent to Anthropic",
+        default: false,
+    },
+    anthropicApiKey: {
+        type: OptionType.STRING,
+        description: "Your Claude API key, from console.anthropic.com (saved in Vencord's settings on this computer)",
+        default: "",
+        placeholder: "sk-ant-...",
+    },
+    aiModel: {
+        type: OptionType.STRING,
+        description: "Claude model used for smarter replies",
+        default: "claude-opus-5-5",
     },
     checkForUpdates: {
         type: OptionType.BOOLEAN,
@@ -1046,7 +1070,7 @@ export default definePlugin({
     name: "FriendsInVoice",
     description: "A page showing which voice rooms your friends are in and one-click join, plus My list, voice/online alerts and a Run away list",
     authors: [{ name: "mPhpMaster", id: 0n }],
-    dependencies: ["ServerListAPI", "UserSettingsAPI"],
+    dependencies: ["ServerListAPI", "UserSettingsAPI", "MessageAccessoriesAPI"],
     settings,
 
     // "Stay in voice" and "Never go idle". Same patches as Vencord's DisableCallIdle / CustomIdle plugins,
@@ -1097,6 +1121,21 @@ export default definePlugin({
     renderButton: ErrorBoundary.wrap(ServerListButton, { noop: true }),
 
     start() {
+        addMessageAccessory("FriendsInVoiceSmartReplies", props => {
+            const { message } = props;
+            if (!settings.store.smartReplies || !message?.author || message.author.bot) return null;
+            if (message.author.id === UserStore.getCurrentUser()?.id) return null;
+
+            const channel = props.channel ?? ChannelStore.getChannel(message.channel_id);
+            if (!channel?.isDM()) return null;
+
+            return (
+                <ErrorBoundary noop>
+                    <SmartReplies message={message} channel={channel} />
+                </ErrorBoundary>
+            );
+        });
+
         loadedAway.stayInVoice = settings.store.stayInVoice;
         loadedAway.neverIdle = settings.store.neverIdle;
         startQuietPeriod();
@@ -1111,6 +1150,7 @@ export default definePlugin({
     },
 
     stop() {
+        removeMessageAccessory("FriendsInVoiceSmartReplies");
         setPageOpen(false);
         PresenceStore.removeChangeListener(onPresenceChange);
         clearInterval(updateTimer);

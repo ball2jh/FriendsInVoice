@@ -582,3 +582,42 @@
 .vc-fiv-person-name.vc-fiv-clickable:hover {
     text-decoration: underline;
 }
+
+/* ---------- v1.5: smart replies ---------- */
+.vc-fiv-replies {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.vc-fiv-replies-label {
+    font-size: 12px;
+    color: var(--text-muted, #949ba4);
+}
+
+.vc-fiv-reply {
+    padding: 3px 10px;
+    border-radius: 14px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--text-default, #dbdee1);
+    background: var(--background-mod-normal, rgb(255 255 255 / 6%));
+    border: 1px solid var(--border-subtle, rgb(255 255 255 / 10%));
+    transition: background 0.1s, border-color 0.1s;
+}
+
+.vc-fiv-reply:hover {
+    background: var(--background-mod-strong, rgb(255 255 255 / 12%));
+    border-color: var(--brand-500, #5865f2);
+}
+
+.vc-fiv-reply-ai {
+    border-color: rgb(240 178 50 / 50%);
+}
+
+.vc-fiv-reply-ask {
+    color: #f0b232;
+    border-style: dashed;
+}

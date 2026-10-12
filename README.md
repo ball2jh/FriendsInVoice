@@ -42,6 +42,14 @@ Pick specific people to follow, friends or not. Each gets a card showing their o
 
 Right-click a user → **Add to Run away** (or **Remove from Run away**). Every time someone on this list comes online you get a notification; click it to switch your status to **Invisible**. The 🏃 Run away tab shows everyone on the list, with their status, and lets you add or remove people.
 
+### 💬 Smart replies in DMs
+
+When someone sends you a direct message, a few suggested replies appear under their latest message. Click one to put it in the message box; you can edit it before pressing Enter, and nothing is sent by itself.
+
+- **Built-in (on by default, free and private):** the plugin recognizes the kind of message (greeting, "how are you", thanks, apology, an invite to voice, goodbye, laughing, a link, a question) in **Arabic and English** and suggests matching replies in the same language. Messages never leave your computer.
+- **✨ Smarter replies with Claude (optional):** turn on *Smarter replies* in the plugin settings and paste a [Claude API key](https://console.anthropic.com). A **✨ Smarter replies** button then appears next to the suggestions; clicking it asks Claude for three replies that fit the conversation. Only when you click it, the last few messages of that chat are sent to Anthropic. API usage is billed to your Anthropic account. The model can be changed in the settings (default claude-opus-5-5).
+
+Suggestions disappear as soon as anyone sends a newer message. Turn the feature off with *Smart replies* in the plugin settings.
 ### 🛋️ When you're away from the computer
 
 Right-click **yourself** (your name in a voice room, the member list or a message) to find two switches:
