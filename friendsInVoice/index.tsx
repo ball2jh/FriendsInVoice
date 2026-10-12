@@ -25,7 +25,7 @@ import { ChannelActionCreators, ChannelRouter, ChannelStore, ContextMenuApi, Gui
 
 import { SmartReplies } from "./smartReplies";
 
-const VERSION = "1.6.0";
+const VERSION = "1.7.0";
 const REPO = "mPhpMaster/FriendsInVoice";
 const DONATE_URL = "https://paypal.me/mfsafadi";
 
