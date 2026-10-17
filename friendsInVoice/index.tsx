@@ -7,7 +7,6 @@
 import "./style.css";
 import "./styleExtras.css";
 
-import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { addMessageAccessory, removeMessageAccessory } from "@api/MessageAccessories";
 import { showNotification } from "@api/Notifications";
 import { isPluginEnabled } from "@api/PluginManager";
@@ -16,14 +15,14 @@ import { definePluginSettings } from "@api/Settings";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { classNameFactory } from "@utils/css";
 import definePlugin, { OptionType } from "@utils/types";
-import { User } from "@vencord/discord-types";
 import { ChannelActionCreators, ChannelStore, ContextMenuApi, Menu, PresenceStore, React, ReactDOM, RelationshipStore, SelectedChannelStore, SelectedGuildStore, Tooltip, useEffect, useReducer, UserStore, useState, useStateFromStores, VoiceStateStore } from "@webpack/common";
 
-import { checkForUpdate, inList, onPresenceChange, onVoiceStateUpdates, seedStatuses, seedVoiceChannels, startQuietPeriod, startUpdateTimer, stopUpdateTimer, toggleInList } from "./notifications";
-import { GUARD_ACTIONS, GUARD_LABELS } from "./personalGuardsProtocol";
-import { clearGuardRuntime, type GuardEvent, handleGuardMessage, prepareGuardCommand, setGrant, setGuardEventListener } from "./personalGuardsRuntime";
+import { checkForUpdate, onPresenceChange, onVoiceStateUpdates, seedStatuses, seedVoiceChannels, startQuietPeriod, startUpdateTimer, stopUpdateTimer } from "./notifications";
+import { GuardNotificationHost } from "./personalGuardsNotice";
+import { clearGuardRuntime, handleGuardMessage } from "./personalGuardsRuntime";
 import { PersonalGuardsTab } from "./personalGuardsTab";
 import { SmartReplies } from "./smartReplies";
+import { UserContextPatch } from "./userContextMenu";
 import { useVoiceData } from "./voiceContent";
 import { AlertsTab, MyListTab, RunAwayTab, VoiceTab, WatchedCard } from "./voiceTabs";
 
@@ -98,6 +97,7 @@ export const settings = definePluginSettings({
     knownGuardGrants: { type: OptionType.CUSTOM, default: [] as { userId: string; actions: ("mute" | "deafen" | "disconnect")[]; }[] },
     guardBlocks: { type: OptionType.CUSTOM, default: [] as { userId: string; until: number; }[] },
     guardReplay: { type: OptionType.CUSTOM, default: [] as { nonce: string; createdAt: number; }[] },
+    guardPeerKeys: { type: OptionType.CUSTOM, default: [] as { userId: string; publicKey: string; }[] },
 });
 
 // Discord's openPrivateChannel now takes { recipientIds }. Vencord's helper still passes a bare user id,
@@ -126,6 +126,11 @@ function setFocusUser(id: string | null) {
 export function openPageFor(id: string) {
     focusUserId = id;
     requestedTab = "voice";
+    setPageOpen(true);
+}
+
+export function openGuardsPage() {
+    requestedTab = "guards";
     setPageOpen(true);
 }
 
@@ -172,7 +177,6 @@ function FriendsInVoicePage() {
     const data = useVoiceData(focus);
     const { notifyOnline, blacklist, notifyVoice } = settings.use(["notifyOnline", "blacklist", "notifyVoice"]);
     const [tab, setTab] = useState<Tab>(requestedTab);
-    const [guardEvent, setGuardEvent] = useState<GuardEvent | null>(null);
     const [, refreshGuards] = useReducer(value => value + 1, 0);
     const [rect, setRect] = useState(getContentRect);
     const bodyRef = React.useRef<HTMLDivElement>(null);
@@ -185,10 +189,6 @@ function FriendsInVoicePage() {
 
     useEffect(() => { if (requestedTab === "guards") setTab("guards"); }, [requestedTab]);
 
-    useEffect(() => {
-        setGuardEventListener(setGuardEvent);
-        return () => setGuardEventListener(undefined);
-    }, []);
 
     const guildId = useStateFromStores([SelectedGuildStore], () => SelectedGuildStore.getGuildId());
     const channelId = useStateFromStores([SelectedChannelStore], () => SelectedChannelStore.getChannelId());
@@ -253,7 +253,7 @@ function FriendsInVoicePage() {
                 {tab === "mine" && <MyListTab data={data} />}
                 {tab === "alerts" && <AlertsTab data={data} />}
                 {tab === "runaway" && <RunAwayTab data={data} />}
-                {tab === "guards" && <PersonalGuardsTab store={settings.store} event={guardEvent} onChange={refreshGuards} clearEvent={() => setGuardEvent(null)} />}
+                {tab === "guards" && <PersonalGuardsTab store={settings.store} refresh={refreshGuards} />}
                 <div className={cl("note")}>
                     Discord only shares voice activity and online status for servers you're also in, so people in servers you haven't joined won't show up.
                     {" · "}v{VERSION}{" · "}
@@ -300,6 +300,7 @@ function ServerListButton() {
                 <ErrorBoundary><FriendsInVoicePage /></ErrorBoundary>,
                 document.body
             )}
+            {ReactDOM.createPortal(<ErrorBoundary><GuardNotificationHost store={settings.store} /></ErrorBoundary>, document.body)}
         </>
     );
 }
@@ -329,7 +330,7 @@ function toggleAway(key: AwayKey) {
 }
 
 // options shown when you right-click yourself
-function selfMenuItems() {
+export function selfMenuItems() {
     return (
         <Menu.MenuGroup>
             {(Object.keys(AWAY_OPTIONS) as AwayKey[]).map(key => {
@@ -352,56 +353,6 @@ function selfMenuItems() {
         </Menu.MenuGroup>
     );
 }
-
-const UserContextPatch: NavContextMenuPatchCallback = (children, { user }: { user?: User; }) => {
-    if (!user) return;
-    if (user.id === UserStore.getCurrentUser()?.id) {
-        children.push(selfMenuItems());
-        return;
-    }
-
-    const watched = inList("watchlist", user.id);
-    const notifyVoice = inList("notifyVoice", user.id);
-    const notify = inList("notifyOnline", user.id);
-    const blocked = inList("blacklist", user.id);
-    const guardActions = settings.store.knownGuardGrants.find(grant => grant.userId === user.id)?.actions ?? [];
-    const myId = UserStore.getCurrentUser()?.id;
-    const sharedVoice = myId && VoiceStateStore.getVoiceStateForUser(myId)?.channelId && VoiceStateStore.getVoiceStateForUser(myId)?.channelId === VoiceStateStore.getVoiceStateForUser(user.id)?.channelId;
-
-    children.push(
-        <Menu.MenuGroup>
-            <Menu.MenuItem
-                id="vc-fiv-watch"
-                label={watched ? "Remove from My list" : "Add to My list"}
-                action={() => toggleInList("watchlist", user.id)}
-            />
-            <Menu.MenuItem
-                id="vc-fiv-notify-voice"
-                label={notifyVoice ? "Stop notifying me when in voice" : "Notify me when in voice"}
-                action={() => toggleInList("notifyVoice", user.id)}
-            />
-            <Menu.MenuItem
-                id="vc-fiv-notify"
-                label={notify ? "Stop notifying me when online" : "Notify me when online"}
-                action={() => toggleInList("notifyOnline", user.id)}
-            />
-            <Menu.MenuItem
-                id="vc-fiv-blacklist"
-                label={blocked ? "Remove from Run away" : "Add to Run away"}
-                color={blocked ? undefined : "danger"}
-                action={() => toggleInList("blacklist", user.id)}
-            />
-            <Menu.MenuItem id="vc-fiv-add-guard" label="Add to Personal Guards" action={() => {
-                if (!settings.store.personalGuards.some(grant => grant.userId === user.id)) setGrant(settings.store, user.id, GUARD_ACTIONS);
-                requestedTab = "guards";
-                setPageOpen(true);
-            }} />
-            {sharedVoice && guardActions.length > 0 && <Menu.MenuItem id="vc-fiv-guard-actions" label="Guard Actions">
-                {guardActions.map(action => <Menu.MenuItem key={action} id={`vc-fiv-guard-${action}`} label={GUARD_LABELS[action]} action={() => prepareGuardCommand(user.id, action)} />)}
-            </Menu.MenuItem>}
-        </Menu.MenuGroup>
-    );
-};
 
 export default definePlugin({
     name: "FriendsInVoice",

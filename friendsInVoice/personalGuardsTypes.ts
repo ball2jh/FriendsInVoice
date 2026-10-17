@@ -25,3 +25,20 @@ export interface GuardNotice {
     actions: GuardAction[];
     createdAt: number;
 }
+
+export interface GuardKeyWire {
+    type: "key";
+    version: 2;
+    publicKey: string;
+}
+
+export interface GuardSealedWire {
+    type: "sealed";
+    version: 2;
+    to: string;
+    fromKey: string;
+    iv: string;
+    ciphertext: string;
+}
+
+export type GuardWire = GuardKeyWire | GuardSealedWire;
