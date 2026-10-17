@@ -68,11 +68,11 @@ Both are off by default. After changing one, click the notification (or **Reload
 These don't stop a server's own bots or rules from kicking inactive people, and you'll still disconnect if your internet drops or the PC goes to sleep.
 ### Updates
 
-The plugin checks GitHub for new releases (at startup and every 6 hours). When one is out you get a notification in Discord; click it to open the download page, then run the installer from the new zip (see [Update](#update)). You can also click **Check for updates** at the bottom of the page. The check can be turned off in the plugin settings.
+The plugin checks GitHub for new releases (at startup and every 6 hours). On Windows and macOS, click the new-version notification to download the package from this repository's GitHub Release, verify its SHA-256 digest, install the plugin source, build Vencord, and restart Discord. Your plugin settings and other plugins stay in place. A failed build restores the previous source and tries to rebuild it. Linux users can use the manual update steps below. You can also click **Check for updates** at the bottom of the page. The check can be turned off in the plugin settings. Versions before v1.9.0 need one manual update to gain one-click updating.
 
 ## Install
 
-> Custom plugins can't be added to the regular Vencord download. Vencord has to be built from source on your PC, and the installer below does all of that for you. Windows only.
+> Custom plugins can't be added to the regular Vencord download. Vencord has to be built from source on your PC, and the installer below does all of that for you. Windows instructions follow; the included `install.command` and `install.sh` support macOS and Linux.
 
 **What you need:** Windows 10/11 and the Discord desktop app ([download Discord](https://discord.com/download)). Log in to Discord at least once before installing.
 
@@ -120,7 +120,7 @@ Run these from a terminal opened in the unzipped folder (`install.bat` passes th
 
 ### Update
 
-Download the new release, unzip it, and run `install.bat` again (Mac/Linux: `install.command` or `install.sh`). It will say FriendsInVoice is already installed and ask whether to uninstall it. Answer **N**, then **Y** to update.
+On Windows and macOS with v1.9.0 or newer, click the update notification. For the first update from an older version, or on Linux, download the new release, unzip it, and run `install.bat` again (Mac/Linux: `install.command` or `install.sh`). It will say FriendsInVoice is already installed and ask whether to uninstall it. Answer **N**, then **Y** to update.
 
 ### Uninstall
 

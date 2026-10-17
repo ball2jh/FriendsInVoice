@@ -6,13 +6,17 @@
 
 import { showNotification } from "@api/Notifications";
 import { getUserSettingLazy } from "@api/UserSettings";
+import type { PluginNative } from "@utils/types";
 import { ChannelStore, PresenceStore, showToast, UserStore, VoiceStateStore } from "@webpack/common";
 
 import { openPageFor,openPrivateChannel, setPageOpen, settings } from ".";
+import type { UpdateStatus } from "./updateTypes";
+import { isNewer } from "./updateVersion";
 import { describeChannel, displayName } from "./voiceContent";
 const StatusSettings = getUserSettingLazy<string>("status", "status")!;
-const VERSION = "1.8.0";
+const VERSION = "1.9.0";
 const REPO = "mPhpMaster/FriendsInVoice";// ---------- lists ----------
+const UpdateNative = VencordNative.pluginHelpers.FriendsInVoice as PluginNative<typeof import("./native")>;
 
 export type ListKey = "watchlist" | "notifyOnline" | "blacklist" | "notifyVoice";
 
@@ -153,12 +157,43 @@ export function onPresenceChange() {
 let notifiedVersion: string | null = null;
 let updateTimer: ReturnType<typeof setInterval> | undefined;
 
-function isNewer(a: string, b: string) {
-    const pa = a.split(".").map(Number), pb = b.split(".").map(Number);
-    for (let i = 0; i < 3; i++) {
-        if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
+let updateInProgress = false;
+
+async function applyUpdate(version: string, releaseUrl: string) {
+    if (updateInProgress) return;
+    updateInProgress = true;
+    let lastStage = "";
+    const timer = setInterval(async () => {
+        const status = await UpdateNative.getUpdateStatus() as UpdateStatus;
+        if (status.stage !== lastStage) {
+            lastStage = status.stage;
+            showToast({ text: status.message, variant: status.stage === "failed" ? "critical" : "success" });
+        }
+    }, 1000);
+    try {
+        showToast({ text: `Downloading Friends in Voice v${version}…`, variant: "success" });
+        const status = await UpdateNative.installUpdate(version, VERSION) as UpdateStatus;
+        if (status.stage === "failed") {
+            showNotification({
+                title: "Friends in Voice update failed",
+                body: `${status.message} Click to open the release page.`,
+                permanent: true,
+                onClick: () => VencordNative.native.openExternal(releaseUrl)
+            });
+        } else {
+            showToast({ text: status.message, variant: "success" });
+        }
+    } catch (error) {
+        showNotification({
+            title: "Friends in Voice update failed",
+            body: `${String(error)} Click to open the release page.`,
+            permanent: true,
+            onClick: () => VencordNative.native.openExternal(releaseUrl)
+        });
+    } finally {
+        clearInterval(timer);
+        updateInProgress = false;
     }
-    return false;
 }
 
 export async function checkForUpdate(manual = false) {
@@ -170,7 +205,7 @@ export async function checkForUpdate(manual = false) {
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        const { tag_name, html_url } = await res.json();
+        const { tag_name } = await res.json();
         const latest = String(tag_name).replace(/^v/, "");
 
         if (!isNewer(latest, VERSION)) {
@@ -182,9 +217,9 @@ export async function checkForUpdate(manual = false) {
 
         showNotification({
             title: `Friends in Voice v${latest} is out`,
-            body: `You have v${VERSION}. Click to open the download page, then run install.bat from the new zip.`,
+            body: `You have v${VERSION}. Click to download, install, build, and restart Discord automatically.`,
             permanent: true,
-            onClick: () => VencordNative.native.openExternal(html_url),
+            onClick: () => void applyUpdate(latest, `https://github.com/${REPO}/releases/tag/v${latest}`),
         });
     } catch {
         if (manual) showToast({ text: "Couldn't check for updates", variant: "critical" });
