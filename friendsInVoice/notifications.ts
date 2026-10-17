@@ -11,7 +11,7 @@ import { ChannelStore, PresenceStore, showToast, UserStore, VoiceStateStore } fr
 import { openPageFor,openPrivateChannel, setPageOpen, settings } from ".";
 import { describeChannel, displayName } from "./voiceContent";
 const StatusSettings = getUserSettingLazy<string>("status", "status")!;
-const VERSION = "1.7.0";
+const VERSION = "1.8.0";
 const REPO = "mPhpMaster/FriendsInVoice";// ---------- lists ----------
 
 export type ListKey = "watchlist" | "notifyOnline" | "blacklist" | "notifyVoice";
