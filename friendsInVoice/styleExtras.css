@@ -1,0 +1,195 @@
+/* ---------- v1.1: status, alerts ---------- */
+.vc-fiv-status-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    vertical-align: middle;
+}
+
+.vc-fiv-status {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.vc-fiv-status-online { background: #23a55a; }
+.vc-fiv-status-idle { background: #f0b232; }
+.vc-fiv-status-dnd { background: #f23f43; }
+.vc-fiv-status-offline { background: #80848e; }
+
+.vc-fiv-status-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted, #949ba4);
+}
+
+.vc-fiv-pill-offline {
+    background: rgb(128 132 142 / 25%);
+    color: #b5bac1;
+}
+
+.vc-fiv-sections {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(460px, 100%), 1fr));
+    gap: 16px;
+    align-items: start;
+}
+
+.vc-fiv-section {
+    border-radius: 10px;
+    padding: 14px;
+    background: var(--background-mod-subtle, rgb(255 255 255 / 4%));
+}
+
+.vc-fiv-section-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-strong, #f2f3f5);
+    margin-bottom: 4px;
+}
+
+.vc-fiv-section-desc {
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--text-muted, #949ba4);
+    margin-bottom: 12px;
+}
+
+.vc-fiv-section-empty {
+    font-size: 13px;
+}
+
+.vc-fiv-alert-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.vc-fiv-alert-person {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: var(--background-mod-normal, rgb(255 255 255 / 6%));
+    font-size: 14px;
+}
+
+.vc-fiv-alert-person .vc-fiv-status-wrap {
+    margin-left: auto;
+}
+
+.vc-fiv-remove {
+    cursor: pointer;
+    padding: 0 6px;
+    color: var(--text-muted, #949ba4);
+}
+
+.vc-fiv-remove:hover {
+    color: #f23f43;
+}
+
+.vc-fiv-link {
+    cursor: pointer;
+    color: var(--text-link, #00a8fc);
+}
+
+.vc-fiv-link:hover {
+    text-decoration: underline;
+}
+/* ---------- v1.2: spotlight ---------- */
+.vc-fiv-spotlight {
+    max-width: 640px;
+    margin-bottom: 18px;
+    padding: 10px;
+    border-radius: 12px;
+    border: 2px solid #f0b232;
+    background: rgb(240 178 50 / 8%);
+}
+
+.vc-fiv-spotlight-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 2px 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #f0b232;
+}
+/* ---------- v1.3: clickable people ---------- */
+.vc-fiv-clickable {
+    cursor: pointer;
+}
+
+.vc-fiv-member.vc-fiv-clickable,
+.vc-fiv-alert-person.vc-fiv-clickable {
+    margin: 0 -4px;
+    padding-left: 4px;
+    padding-right: 4px;
+    border-radius: 6px;
+}
+
+.vc-fiv-member.vc-fiv-clickable:hover,
+.vc-fiv-alert-person.vc-fiv-clickable:hover {
+    background: var(--background-mod-normal, rgb(255 255 255 / 6%));
+}
+
+.vc-fiv-alert-person.vc-fiv-clickable {
+    margin: 0;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+.vc-fiv-chip.vc-fiv-clickable:hover,
+.vc-fiv-person-name.vc-fiv-clickable:hover {
+    text-decoration: underline;
+}
+
+/* ---------- v1.5: smart replies ---------- */
+.vc-fiv-replies {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.vc-fiv-replies-label {
+    font-size: 12px;
+    color: var(--text-muted, #949ba4);
+}
+
+.vc-fiv-reply {
+    padding: 3px 10px;
+    border-radius: 14px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--text-default, #dbdee1);
+    background: var(--background-mod-normal, rgb(255 255 255 / 6%));
+    border: 1px solid var(--border-subtle, rgb(255 255 255 / 10%));
+    transition: background 0.1s, border-color 0.1s;
+}
+
+.vc-fiv-reply:hover {
+    background: var(--background-mod-strong, rgb(255 255 255 / 12%));
+    border-color: var(--brand-500, #5865f2);
+}
+
+.vc-fiv-reply-ai {
+    border-color: rgb(240 178 50 / 50%);
+}
+
+.vc-fiv-reply-ask {
+    color: #f0b232;
+    border-style: dashed;
+}
+
+.vc-fiv-guards-tab { max-width: 760px; line-height: 1.5; }
+.vc-fiv-guards-tab form, .vc-fiv-guard-controls, .vc-fiv-guard-options { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.vc-fiv-guards-tab input, .vc-fiv-guards-tab select, .vc-fiv-guards-tab button { padding: 7px; border-radius: 6px; }
+.vc-fiv-guards-tab button { cursor: pointer; color: var(--text-default); background: var(--background-mod-strong); }
+.vc-fiv-guard-card, .vc-fiv-guard-event { padding: 12px; margin: 10px 0; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--background-mod-normal); }
+.vc-fiv-guard-options label { display: inline-flex; align-items: center; gap: 4px; }
+.vc-fiv-guard-title small { color: var(--text-muted); }
+.vc-fiv-guard-event { border-color: var(--brand-500); }

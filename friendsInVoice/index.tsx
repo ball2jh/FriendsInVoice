@@ -5,6 +5,7 @@
  */
 
 import "./style.css";
+import "./styleExtras.css";
 
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { addMessageAccessory, removeMessageAccessory } from "@api/MessageAccessories";
@@ -12,27 +13,26 @@ import { showNotification } from "@api/Notifications";
 import { isPluginEnabled } from "@api/PluginManager";
 import { addServerListElement, removeServerListElement, ServerListRenderPosition } from "@api/ServerList";
 import { definePluginSettings } from "@api/Settings";
-import { getUserSettingLazy } from "@api/UserSettings";
-import { Button } from "@components/Button";
 import ErrorBoundary from "@components/ErrorBoundary";
-import { copyToClipboard } from "@utils/clipboard";
 import { classNameFactory } from "@utils/css";
-import { canonicalizeMatch } from "@utils/patches";
 import definePlugin, { OptionType } from "@utils/types";
-import { Channel, User } from "@vencord/discord-types";
-import { findByPropsLazy, wreq } from "@webpack";
-import { ChannelActionCreators, ChannelRouter, ChannelStore, ContextMenuApi, GuildMemberStore, GuildStore, Menu, openUserProfileModal, PermissionsBits, PermissionStore, PresenceStore, React, ReactDOM, RelationshipStore, SelectedChannelStore, SelectedGuildStore, showToast, Tooltip, useEffect, useMemo, useReducer, UserStore, UserUtils, useState, useStateFromStores, VoiceStateStore } from "@webpack/common";
+import { User } from "@vencord/discord-types";
+import { ChannelActionCreators, ChannelStore, ContextMenuApi, Menu, PresenceStore, React, ReactDOM, RelationshipStore, SelectedChannelStore, SelectedGuildStore, Tooltip, useEffect, useReducer, UserStore, useState, useStateFromStores, VoiceStateStore } from "@webpack/common";
 
+import { checkForUpdate, inList, onPresenceChange, onVoiceStateUpdates, seedStatuses, seedVoiceChannels, startQuietPeriod, startUpdateTimer, stopUpdateTimer, toggleInList } from "./notifications";
+import { GUARD_ACTIONS, GUARD_LABELS } from "./personalGuardsProtocol";
+import { clearGuardRuntime, type GuardEvent, handleGuardMessage, prepareGuardCommand, setGrant, setGuardEventListener } from "./personalGuardsRuntime";
+import { PersonalGuardsTab } from "./personalGuardsTab";
 import { SmartReplies } from "./smartReplies";
+import { useVoiceData } from "./voiceContent";
+import { AlertsTab, MyListTab, RunAwayTab, VoiceTab, WatchedCard } from "./voiceTabs";
+
+export { inList, isOnline, toggleInList } from "./notifications";
 
 const VERSION = "1.7.0";
-const REPO = "mPhpMaster/FriendsInVoice";
 const DONATE_URL = "https://paypal.me/mfsafadi";
 
 const cl = classNameFactory("vc-fiv-");
-
-const { selectVoiceChannel } = findByPropsLazy("selectVoiceChannel", "selectChannel");
-const StatusSettings = getUserSettingLazy<string>("status", "status")!;
 
 export const settings = definePluginSettings({
     notifyOnce: {
@@ -94,201 +94,25 @@ export const settings = definePluginSettings({
         type: OptionType.CUSTOM,
         default: [] as string[],
     },
+    personalGuards: { type: OptionType.CUSTOM, default: [] as { userId: string; actions: ("mute" | "deafen" | "disconnect")[]; }[] },
+    knownGuardGrants: { type: OptionType.CUSTOM, default: [] as { userId: string; actions: ("mute" | "deafen" | "disconnect")[]; }[] },
+    guardBlocks: { type: OptionType.CUSTOM, default: [] as { userId: string; until: number; }[] },
+    guardReplay: { type: OptionType.CUSTOM, default: [] as { nonce: string; createdAt: number; }[] },
 });
 
 // Discord's openPrivateChannel now takes { recipientIds }. Vencord's helper still passes a bare user id,
 // which Discord reads as "no recipients" and creates an empty group DM, so call Discord directly.
-function openPrivateChannel(userId: string) {
+export function openPrivateChannel(userId: string) {
     return ChannelActionCreators.openPrivateChannel({ recipientIds: [userId] });
 }
 
-// ---------- lists ----------
-
-type ListKey = "watchlist" | "notifyOnline" | "blacklist" | "notifyVoice";
-
-function inList(key: ListKey, id: string) {
-    return settings.store[key].includes(id);
-}
-
-function toggleInList(key: ListKey, id: string) {
-    const list = settings.store[key];
-    settings.store[key] = list.includes(id) ? list.filter(x => x !== id) : [...list, id];
-    if (key === "notifyOnline" || key === "blacklist") lastStatus.set(id, PresenceStore.getStatus(id));
-    if (key === "notifyVoice") lastVoiceChannel.set(id, VoiceStateStore.getVoiceStateForUser(id)?.channelId ?? null);
-}
-
-// ---------- voice join notifications ----------
-
-const lastVoiceChannel = new Map<string, string | null>();
-
-function seedVoiceChannels() {
-    lastVoiceChannel.clear();
-    for (const id of settings.store.notifyVoice) {
-        lastVoiceChannel.set(id, VoiceStateStore.getVoiceStateForUser(id)?.channelId ?? null);
-    }
-}
-
-function notifyJoinedVoice(id: string, channelId: string) {
-    const { user, name } = nameOf(id);
-    const channel = ChannelStore.getChannel(channelId);
-    const where = channel ? describeChannel(channel) : null;
-    const offline = !isOnline(PresenceStore.getStatus(id));
-
-    showNotification({
-        title: `🔊 ${name} joined a voice room${offline ? " (shows offline)" : ""}`,
-        body: where ? `${where.roomName} · ${where.place}. Click to see who's with them.` : "Click to see where they are.",
-        icon: user?.getAvatarURL(undefined, 128),
-        onClick: () => openPageFor(id),
-    });
-}
-
-function onVoiceStateUpdates(voiceStates: { userId: string; channelId?: string | null; }[]) {
-    const list = settings.store.notifyVoice;
-    if (!list.length) return;
-
-    for (const s of voiceStates) {
-        if (!list.includes(s.userId)) continue;
-
-        const now = s.channelId ?? null;
-        const prev = lastVoiceChannel.get(s.userId);
-        lastVoiceChannel.set(s.userId, now);
-
-        // only notify when they go from "not in voice" to "in a room"; moving between rooms isn't a new join
-        if (Date.now() < quietUntil || !now || prev) continue;
-        notifyJoinedVoice(s.userId, now);
-    }
-}
-
-// ---------- online notifications ----------
-
-const lastStatus = new Map<string, string>();
-let quietUntil = 0;
-let reseedTimer: ReturnType<typeof setTimeout> | undefined;
-
-// after (re)connecting, Discord sends presences and voice states in bulk; don't treat those as changes,
-// and re-read where everyone is once things have settled
-function startQuietPeriod() {
-    quietUntil = Date.now() + 15_000;
-    clearTimeout(reseedTimer);
-    reseedTimer = setTimeout(() => {
-        seedStatuses();
-        seedVoiceChannels();
-    }, 15_000);
-}
-
-const isOnline = (status?: string) => !!status && status !== "offline" && status !== "invisible";
-
-function seedStatuses() {
-    lastStatus.clear();
-    for (const id of [...settings.store.notifyOnline, ...settings.store.blacklist]) {
-        lastStatus.set(id, PresenceStore.getStatus(id));
-    }
-}
-
-function nameOf(id: string) {
-    const user = UserStore.getUser(id);
-    return { user, name: user ? displayName(user, null) : "Someone" };
-}
-
-function notifyCameOnline(id: string) {
-    const { user, name } = nameOf(id);
-    showNotification({
-        title: `${name} is online`,
-        body: "Click to open your DM with them.",
-        icon: user?.getAvatarURL(undefined, 128),
-        onClick: () => {
-            setPageOpen(false);
-            openPrivateChannel(id);
-        },
-    });
-
-    if (settings.store.notifyOnce) {
-        settings.store.notifyOnline = settings.store.notifyOnline.filter(x => x !== id);
-    }
-}
-
-function notifyRunAway(id: string) {
-    const { user, name } = nameOf(id);
-    showNotification({
-        title: `🏃 ${name} is online`,
-        body: "They're on your Run away list. Click to go invisible.",
-        icon: user?.getAvatarURL(undefined, 128),
-        onClick: async () => {
-            await StatusSettings.updateSetting("invisible");
-            showToast("Your status is now Invisible", "success");
-        },
-    });
-}
-
-function onPresenceChange() {
-    const { notifyOnline, blacklist } = settings.store;
-    if (!notifyOnline.length && !blacklist.length) return;
-
-    for (const id of new Set([...notifyOnline, ...blacklist])) {
-        const status = PresenceStore.getStatus(id);
-        const prev = lastStatus.get(id);
-        lastStatus.set(id, status);
-
-        // presences arrive in bulk after (re)connecting, so don't treat those as "came online"
-        if (Date.now() < quietUntil || prev === undefined) continue;
-        if (isOnline(prev) || !isOnline(status)) continue;
-
-        if (blacklist.includes(id)) notifyRunAway(id);
-        if (notifyOnline.includes(id)) notifyCameOnline(id);
-    }
-}
-
-// ---------- update check ----------
-
-let notifiedVersion: string | null = null;
-let updateTimer: ReturnType<typeof setInterval> | undefined;
-
-function isNewer(a: string, b: string) {
-    const pa = a.split(".").map(Number), pb = b.split(".").map(Number);
-    for (let i = 0; i < 3; i++) {
-        if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
-    }
-    return false;
-}
-
-async function checkForUpdate(manual = false) {
-    if (!manual && !settings.store.checkForUpdates) return;
-
-    try {
-        const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
-            headers: { Accept: "application/vnd.github+json" }
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        const { tag_name, html_url } = await res.json();
-        const latest = String(tag_name).replace(/^v/, "");
-
-        if (!isNewer(latest, VERSION)) {
-            if (manual) showToast(`Friends in Voice is up to date (v${VERSION})`, "success");
-            return;
-        }
-        if (!manual && notifiedVersion === latest) return;
-        notifiedVersion = latest;
-
-        showNotification({
-            title: `Friends in Voice v${latest} is out`,
-            body: `You have v${VERSION}. Click to open the download page, then run install.bat from the new zip.`,
-            permanent: true,
-            onClick: () => VencordNative.native.openExternal(html_url),
-        });
-    } catch {
-        if (manual) showToast("Couldn't check for updates", "failure");
-    }
-}
-
-// ---------- page open state ----------
 
 let pageOpen = false;
-// the person highlighted at the top of the page (set when clicking a "joined a voice room" notification)
+let requestedTab: Tab = "voice";
 let focusUserId: string | null = null;
 const pageListeners = new Set<() => void>();
 
-function setPageOpen(open: boolean) {
+export function setPageOpen(open: boolean) {
     pageOpen = open;
     if (!open) focusUserId = null;
     pageListeners.forEach(fn => fn());
@@ -299,8 +123,9 @@ function setFocusUser(id: string | null) {
     pageListeners.forEach(fn => fn());
 }
 
-function openPageFor(id: string) {
+export function openPageFor(id: string) {
     focusUserId = id;
+    requestedTab = "voice";
     setPageOpen(true);
 }
 
@@ -313,521 +138,9 @@ function usePageOpen() {
     return pageOpen;
 }
 
-// ---------- data ----------
-
-interface Member {
-    user: User;
-    name: string;
-    isFriend: boolean;
-    isWatched: boolean;
-    isMe: boolean;
-    showsOffline: boolean;
-    muted: boolean;
-    deafened: boolean;
-    streaming: boolean;
-}
-
-interface Room {
-    channel: Channel;
-    place: string;
-    roomName: string;
-    icon: string | null;
-    members: Member[];
-    reasons: Member[];
-    hasFriend: boolean;
-}
-
-function displayName(user: User, guildId: string | null) {
-    return RelationshipStore.getNickname(user.id)
-        ?? (guildId && GuildMemberStore.getNick(guildId, user.id))
-        ?? (user as any).globalName
-        ?? user.username;
-}
-
-function describeChannel(channel: Channel) {
-    const guild = channel.guild_id ? GuildStore.getGuild(channel.guild_id) : null;
-    if (guild) {
-        return {
-            place: guild.name,
-            roomName: channel.name,
-            icon: guild.icon ? `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=64` : null
-        };
-    }
-
-    if (channel.isDM()) {
-        const other = UserStore.getUser(channel.recipients?.[0]);
-        return { place: "Direct call", roomName: other ? displayName(other, null) : "DM", icon: null };
-    }
-
-    return { place: "Group call", roomName: channel.name || "Group DM", icon: null };
-}
-
-function buildRoom(channel: Channel, states: any[], friendIds: Set<string>, watched: Set<string>, myId?: string): Room {
-    const members: Member[] = [];
-    for (const s of states) {
-        const user = UserStore.getUser(s.userId);
-        if (!user) continue;
-
-        const isMe = user.id === myId;
-        members.push({
-            user,
-            name: displayName(user, channel.guild_id ?? null),
-            isFriend: friendIds.has(user.id),
-            isWatched: watched.has(user.id),
-            isMe,
-            // Discord only reliably sends presence for friends, so only flag those
-            showsOffline: !isMe && friendIds.has(user.id) && !isOnline(PresenceStore.getStatus(user.id)),
-            muted: !!(s.mute || s.selfMute),
-            deafened: !!(s.deaf || s.selfDeaf),
-            streaming: !!s.selfStream
-        });
-    }
-
-    const rank = (m: Member) => (m.isWatched ? 2 : 0) + (m.isFriend ? 1 : 0);
-    members.sort((a, b) => rank(b) - rank(a) || a.name.localeCompare(b.name));
-
-    const reasons = members.filter(m => !m.isMe && (m.isFriend || m.isWatched));
-    return {
-        channel,
-        ...describeChannel(channel),
-        members,
-        reasons,
-        hasFriend: reasons.some(m => m.isFriend)
-    };
-}
-
-function collect(watchlist: string[], extra: string | null) {
-    const friendIds = new Set(RelationshipStore.getFriendIDs());
-    const watched = new Set(watchlist);
-    const myId = UserStore.getCurrentUser()?.id;
-    const tracked = (id: string) => friendIds.has(id) || watched.has(id) || id === extra;
-
-    const statesByChannel = new Map<string, any[]>();
-    for (const states of Object.values(VoiceStateStore.getAllVoiceStates() ?? {})) {
-        for (const state of Object.values(states ?? {}) as any[]) {
-            if (!state?.channelId) continue;
-            const list = statesByChannel.get(state.channelId) ?? [];
-            list.push(state);
-            statesByChannel.set(state.channelId, list);
-        }
-    }
-
-    const allRooms: Room[] = [];
-    const roomByUser = new Map<string, Room>();
-
-    for (const [channelId, states] of statesByChannel) {
-        if (!states.some(s => s.userId !== myId && tracked(s.userId))) continue;
-
-        const channel = ChannelStore.getChannel(channelId);
-        if (!channel) continue;
-
-        const room = buildRoom(channel, states, friendIds, watched, myId);
-        allRooms.push(room);
-        for (const m of room.members) roomByUser.set(m.user.id, room);
-    }
-
-    // the home page only lists rooms that have at least one friend in them
-    const rooms = allRooms
-        .filter(r => r.hasFriend)
-        .sort((a, b) => b.reasons.length - a.reasons.length || a.place.localeCompare(b.place));
-
-    return { rooms, roomByUser, friendIds };
-}
-
-function useVoiceData(extra: string | null = null) {
-    const { watchlist } = settings.use(["watchlist"]);
-    const voiceVersion = useStateFromStores([VoiceStateStore], () => VoiceStateStore.getVoiceStateVersion());
-    const relVersion = useStateFromStores([RelationshipStore], () => RelationshipStore.getVersion());
-    const myChannel = useStateFromStores([SelectedChannelStore], () => SelectedChannelStore.getVoiceChannelId());
-    const data = useMemo(() => collect(watchlist, extra), [voiceVersion, relVersion, watchlist, extra]);
-    return { ...data, watchlist, myChannel };
-}
-
-function canJoin(channel: Channel) {
-    if (!channel.guild_id) return true;
-    return PermissionStore.can(PermissionsBits.VIEW_CHANNEL, channel) && PermissionStore.can(PermissionsBits.CONNECT, channel);
-}
-
-function joinRoom(channel: Channel) {
-    if (!canJoin(channel)) {
-        showToast("You don't have permission to join this room", "failure");
-        return;
-    }
-    selectVoiceChannel(channel.id);
-}
-
-function openRoomChannel(channel: Channel) {
-    setPageOpen(false);
-    ChannelRouter.transitionToChannel(channel.id);
-}
-
-// ---------- small components ----------
-
-// ---------- clicking people: left = DM, right = Discord's user menu ----------
-
-// Discord lazy-loads its generic user context menu. Find the loader by the analytics name next to it
-// (stable across builds, unlike module ids), load its chunks, and use the menu component directly.
-const UserMenuLoaderRe = canonicalizeMatch(/Promise\.all\(\[((?:\i\.e\("?\w+"?\),?)+)\]\)\.then\(\i\.bind\(\i,"?(\w+)"?\)\);return \i=>\(0,\i\.jsx\)\(\i,\{\.\.\.\i,user:\i,[^}]{0,80}?\("UserGenericContextMenu"/);
-
-let DiscordUserMenu: React.ComponentType<any> | null = null;
-
-async function loadDiscordUserMenu() {
-    if (DiscordUserMenu) return DiscordUserMenu;
-
-    for (const factory of Object.values(wreq.m)) {
-        const code = String(factory);
-        if (!code.includes('"UserGenericContextMenu"')) continue;
-
-        const match = code.match(UserMenuLoaderRe);
-        if (!match) continue;
-
-        await Promise.all(Array.from(match[1].matchAll(/\.e\("?(\w+)"?\)/g), c => wreq.e(c[1] as any)));
-        const menu = (wreq(match[2] as any) as any)?.default;
-        if (menu) return (DiscordUserMenu = menu);
-    }
-
-    throw new Error("Couldn't find Discord's user context menu");
-}
-
-// used if Discord's own menu can't be found (e.g. after a big Discord update)
-function FallbackUserMenu({ user, onClose }: { user: User; onClose?(): void; }) {
-    const extraProps = { contextMenuAPIArguments: [{ user }] } as any; // lets Vencord plugins (incl. this one) add their items
-    return (
-        <Menu.Menu navId="user-context" onClose={onClose ?? ContextMenuApi.closeContextMenu} {...extraProps}>
-            <Menu.MenuItem id="vc-fiv-profile" label="Profile" action={() => openUserProfileModal({ userId: user.id })} />
-            <Menu.MenuItem id="vc-fiv-message" label="Message" action={() => openDm(user.id)} />
-            <Menu.MenuItem id="vc-fiv-copy-id" label="Copy User ID" action={() => copyToClipboard(user.id)} />
-        </Menu.Menu>
-    );
-}
-
-function openUserMenu(event: React.MouseEvent, user: User) {
-    event.preventDefault();
-    event.stopPropagation();
-
-    ContextMenuApi.openContextMenuLazy(event, async () => {
-        try {
-            const UserMenu = await loadDiscordUserMenu();
-            return (props: any) => <UserMenu {...props} user={user} />;
-        } catch {
-            return (props: any) => <FallbackUserMenu {...props} user={user} />;
-        }
-    });
-}
-
-function openDm(id: string) {
-    setPageOpen(false);
-    openPrivateChannel(id);
-}
-
-/** Props that make an element open a DM on click and Discord's user menu on right-click */
-function personProps(user: User | null | undefined) {
-    if (!user) return {};
-    return {
-        role: "button",
-        title: "Click to message · Right-click for options",
-        onClick: (e: React.MouseEvent) => { e.stopPropagation(); openDm(user.id); },
-        onContextMenu: (e: React.MouseEvent) => openUserMenu(e, user),
-    };
-}
-
-function Avatar({ user, size = 22 }: { user: User; size?: number; }) {
-    return <img className={cl("avatar")} style={{ width: size, height: size }} src={user.getAvatarURL(undefined, 64)} alt="" />;
-}
-
-function useUser(id: string) {
-    const user = useStateFromStores([UserStore], () => UserStore.getUser(id));
-    useEffect(() => {
-        if (!user) UserUtils.getUser(id).catch(() => { });
-    }, [id, user]);
-    return user;
-}
-
-const STATUS_LABEL: Record<string, string> = { online: "Online", idle: "Idle", dnd: "Do Not Disturb", offline: "Offline" };
-
-function StatusDot({ id, withLabel }: { id: string; withLabel?: boolean; }) {
-    const raw = useStateFromStores([PresenceStore], () => PresenceStore.getStatus(id));
-    const status = isOnline(raw) ? raw : "offline";
-    return (
-        <span className={cl("status-wrap")}>
-            <span className={cl("status", `status-${status}`)} title={STATUS_LABEL[status] ?? status} />
-            {withLabel && <span className={cl("status-label")}>{STATUS_LABEL[status] ?? status}</span>}
-        </span>
-    );
-}
-
-function StarButton({ userId }: { userId: string; }) {
-    settings.use(["watchlist"]);
-    const on = inList("watchlist", userId);
-    return (
-        <span
-            className={cl("star", on && "star-on")}
-            title={on ? "Remove from My list" : "Add to My list"}
-            onClick={e => { e.stopPropagation(); toggleInList("watchlist", userId); }}
-        >
-            {on ? "★" : "☆"}
-        </span>
-    );
-}
-
-function MemberRow({ member }: { member: Member; }) {
-    return (
-        <div
-            className={cl("member", (member.isFriend || member.isWatched) && "friend", !member.isMe && "clickable")}
-            {...(member.isMe ? {} : personProps(member.user))}
-        >
-            <Avatar user={member.user} />
-            <span className={cl("member-name")}>
-                {member.name}{member.isMe && " (you)"}
-            </span>
-            {member.isWatched && <span className={cl("pill", "pill-watch")}>MY LIST</span>}
-            {member.isFriend && <span className={cl("pill", "pill-friend")}>FRIEND</span>}
-            {member.showsOffline && <span className={cl("pill", "pill-offline")} title="Their status shows offline, but they're in this room">SHOWS OFFLINE</span>}
-            {member.streaming && <span className={cl("pill", "pill-live")}>LIVE</span>}
-            {member.deafened ? <span className={cl("tag")} title="Deafened">🔇</span>
-                : member.muted && <span className={cl("tag")} title="Muted">🎙️✕</span>}
-            {!member.isMe && <StarButton userId={member.user.id} />}
-        </div>
-    );
-}
-
-function JoinButton({ channel, inThisRoom }: { channel: Channel; inThisRoom: boolean; }) {
-    const joinable = canJoin(channel);
-    return (
-        <Button
-            size="small"
-            variant={inThisRoom ? "secondary" : "primary"}
-            disabled={inThisRoom || !joinable}
-            onClick={() => joinRoom(channel)}
-        >
-            {inThisRoom ? "Joined" : joinable ? "Join" : "Locked"}
-        </Button>
-    );
-}
-
-function RoomCard({ room, inThisRoom }: { room: Room; inThisRoom: boolean; }) {
-    return (
-        <div className={cl("card", inThisRoom && "current")}>
-            <div className={cl("room-header")}>
-                {room.icon
-                    ? <img className={cl("guild-icon")} src={room.icon} alt="" />
-                    : <div className={cl("guild-icon", "placeholder")}>{room.place[0]}</div>}
-                <div className={cl("room-title")} onClick={() => openRoomChannel(room.channel)} title="Open this channel">
-                    <div className={cl("place")}>{room.place}</div>
-                    <div className={cl("room-name")}>🔊 {room.roomName}</div>
-                </div>
-                <JoinButton channel={room.channel} inThisRoom={inThisRoom} />
-            </div>
-            <div className={cl("reason")}>
-                <span className={cl("reason-label")}>Here because of:</span>
-                {room.reasons.map(m => (
-                    <span key={m.user.id} className={cl("chip", !m.isFriend && "chip-watch", "clickable")} {...personProps(m.user)}>
-                        <Avatar user={m.user} size={18} />
-                        {m.name}
-                    </span>
-                ))}
-            </div>
-            <div className={cl("members")}>
-                {room.members.map(m => <MemberRow key={m.user.id} member={m} />)}
-            </div>
-        </div>
-    );
-}
-
-function AddPeople({ listKey, friendIds, placeholder }: { listKey: ListKey; friendIds: Set<string>; placeholder: string; }) {
-    const list = settings.use([listKey])[listKey];
-    const [query, setQuery] = useState("");
-    const q = query.trim().toLowerCase();
-
-    const results = useMemo(() => {
-        if (!q) return [];
-        return [...friendIds]
-            .filter(id => !list.includes(id))
-            .map(id => UserStore.getUser(id))
-            .filter((u): u is User => u != null)
-            .filter(u => displayName(u, null).toLowerCase().includes(q) || u.username.toLowerCase().includes(q))
-            .slice(0, 8);
-    }, [q, list, friendIds]);
-
-    return (
-        <div className={cl("add")}>
-            <input
-                className={cl("search")}
-                placeholder={placeholder}
-                value={query}
-                onChange={e => setQuery(e.currentTarget.value)}
-            />
-            {results.length > 0 && (
-                <div className={cl("results")}>
-                    {results.map(u => (
-                        <div key={u.id} className={cl("result")} onClick={() => { toggleInList(listKey, u.id); setQuery(""); }} onContextMenu={e => openUserMenu(e, u)}>
-                            <Avatar user={u} size={24} />
-                            <span className={cl("member-name")}>{displayName(u, null)}</span>
-                            <span className={cl("result-user")}>@{u.username}</span>
-                            <StatusDot id={u.id} />
-                            <span className={cl("result-add")}>Add</span>
-                        </div>
-                    ))}
-                </div>
-            )}
-            {q && results.length === 0 && <div className={cl("muted", "results-empty")}>No friends match “{query}”.</div>}
-        </div>
-    );
-}
-
-// ---------- tabs ----------
-
-function VoiceTab({ data }: { data: ReturnType<typeof useVoiceData>; }) {
-    const { rooms, myChannel } = data;
-    const [query, setQuery] = useState("");
-    const q = query.trim().toLowerCase();
-
-    const filtered = q
-        ? rooms.filter(r =>
-            r.place.toLowerCase().includes(q)
-            || r.roomName.toLowerCase().includes(q)
-            || r.members.some(m => m.name.toLowerCase().includes(q) || m.user.username.toLowerCase().includes(q)))
-        : rooms;
-
-    return (
-        <>
-            <input
-                className={cl("search")}
-                placeholder="Search people, servers or rooms…"
-                value={query}
-                onChange={e => setQuery(e.currentTarget.value)}
-            />
-            {filtered.length === 0 && (
-                <div className={cl("empty")}>
-                    {q ? "Nothing matches your search." : "None of your friends are in a voice room right now."}
-                </div>
-            )}
-            <div className={cl("grid")}>
-                {filtered.map(room => <RoomCard key={room.channel.id} room={room} inThisRoom={room.channel.id === myChannel} />)}
-            </div>
-        </>
-    );
-}
-
-function WatchedCard({ id, room, myChannel }: { id: string; room?: Room; myChannel?: string | null; }) {
-    const user = useUser(id);
-    const name = user ? displayName(user, room?.channel.guild_id ?? null) : "Loading…";
-    const others = room?.members.filter(m => m.user.id !== id) ?? [];
-    const inThisRoom = !!room && room.channel.id === myChannel;
-
-    return (
-        <div className={cl("card", room && "card-active", inThisRoom && "current")}>
-            <div className={cl("person")}>
-                {user
-                    ? <span className={cl("clickable")} {...personProps(user)}><Avatar user={user} size={40} /></span>
-                    : <div className={cl("avatar", "placeholder")} style={{ width: 40, height: 40 }} />}
-                <div className={cl("person-info")}>
-                    <div className={cl("person-name", "clickable")} {...personProps(user)}>{name} <StatusDot id={id} withLabel /></div>
-                    {room
-                        ? <div className={cl("person-where")} onClick={() => openRoomChannel(room.channel)}>
-                            🔊 <b>{room.roomName}</b> · {room.place}
-                        </div>
-                        : <div className={cl("person-where", "muted")}>Not in a voice room you can see</div>}
-                </div>
-                {room && <JoinButton channel={room.channel} inThisRoom={inThisRoom} />}
-                <StarButton userId={id} />
-            </div>
-            {room && others.length > 0 && (
-                <div className={cl("with")}>
-                    <div className={cl("with-label")}>With {others.length} other{others.length === 1 ? "" : "s"}:</div>
-                    <div className={cl("members")}>
-                        {others.map(m => <MemberRow key={m.user.id} member={m} />)}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-}
-
-function MyListTab({ data }: { data: ReturnType<typeof useVoiceData>; }) {
-    const { watchlist, roomByUser, friendIds, myChannel } = data;
-    const sorted = [...watchlist].sort((a, b) => Number(roomByUser.has(b)) - Number(roomByUser.has(a)));
-
-    return (
-        <>
-            <AddPeople listKey="watchlist" friendIds={friendIds} placeholder="➕ Add a friend to My list — type a name…" />
-            {watchlist.length === 0 && (
-                <div className={cl("empty")}>
-                    Your list is empty.<br />
-                    Add people with the box above, the ☆ next to anyone in “In voice”, or right-click a user → <b>Add to My list</b>.
-                </div>
-            )}
-            <div className={cl("grid")}>
-                {sorted.map(id => <WatchedCard key={id} id={id} room={roomByUser.get(id)} myChannel={myChannel} />)}
-            </div>
-        </>
-    );
-}
-
-function AlertPerson({ id, listKey }: { id: string; listKey: ListKey; }) {
-    const user = useUser(id);
-    return (
-        <div className={cl("alert-person", "clickable")} {...personProps(user)}>
-            {user ? <Avatar user={user} size={28} /> : <div className={cl("avatar", "placeholder")} style={{ width: 28, height: 28 }} />}
-            <span className={cl("member-name")}>{user ? displayName(user, null) : "Loading…"}</span>
-            <StatusDot id={id} withLabel />
-            <span className={cl("remove")} title="Remove" onClick={e => { e.stopPropagation(); toggleInList(listKey, id); }}>✕</span>
-        </div>
-    );
-}
-
-function AlertSection({ listKey, title, description, friendIds }: { listKey: ListKey; title: string; description: string; friendIds: Set<string>; }) {
-    const list = settings.use([listKey])[listKey];
-    return (
-        <div className={cl("section")}>
-            <div className={cl("section-title")}>{title} <span className={cl("count")}>{list.length}</span></div>
-            <div className={cl("section-desc")}>{description}</div>
-            <AddPeople listKey={listKey} friendIds={friendIds} placeholder="➕ Add a friend — type a name…" />
-            {list.length === 0
-                ? <div className={cl("muted", "section-empty")}>Nobody here yet. You can also right-click any user to add them.</div>
-                : <div className={cl("alert-list")}>{list.map(id => <AlertPerson key={id} id={id} listKey={listKey} />)}</div>}
-        </div>
-    );
-}
-
-function AlertsTab({ data }: { data: ReturnType<typeof useVoiceData>; }) {
-    const { notifyOnce } = settings.use(["notifyOnce"]);
-    return (
-        <div className={cl("sections")}>
-            <AlertSection
-                listKey="notifyVoice"
-                title="🔊 Notify me when in voice"
-                description="You get a notification every time one of them joins a voice room you can see, even if their status shows offline — click it to see where they are and who's with them."
-                friendIds={data.friendIds}
-            />
-            <AlertSection
-                listKey="notifyOnline"
-                title="🔔 Notify me when online"
-                description={notifyOnce
-                    ? "You get a notification the next time each of them comes online — click it to open your DM. They're removed from this list afterwards (change this in the plugin settings)."
-                    : "You get a notification every time one of them comes online — click it to open your DM."}
-                friendIds={data.friendIds}
-            />
-        </div>
-    );
-}
-
-function RunAwayTab({ data }: { data: ReturnType<typeof useVoiceData>; }) {
-    return (
-        <div className={cl("sections")}>
-            <AlertSection
-                listKey="blacklist"
-                title="🏃 Run away"
-                description="You get a notification every time one of them comes online — click it to switch your status to Invisible. Right-click anyone → Add to Run away / Remove from Run away."
-                friendIds={data.friendIds}
-            />
-        </div>
-    );
-}
-
 // ---------- page ----------
 
-type Tab = "voice" | "mine" | "alerts" | "runaway";
+type Tab = "voice" | "mine" | "alerts" | "runaway" | "guards";
 
 function getNav() {
     return document.querySelector<HTMLElement>(`.${cl("server-button")}`)?.closest("nav") ?? null;
@@ -858,7 +171,9 @@ function FriendsInVoicePage() {
     const focus = focusUserId;
     const data = useVoiceData(focus);
     const { notifyOnline, blacklist, notifyVoice } = settings.use(["notifyOnline", "blacklist", "notifyVoice"]);
-    const [tab, setTab] = useState<Tab>("voice");
+    const [tab, setTab] = useState<Tab>(requestedTab);
+    const [guardEvent, setGuardEvent] = useState<GuardEvent | null>(null);
+    const [, refreshGuards] = useReducer(value => value + 1, 0);
     const [rect, setRect] = useState(getContentRect);
     const bodyRef = React.useRef<HTMLDivElement>(null);
 
@@ -867,6 +182,13 @@ function FriendsInVoicePage() {
         setTab("voice");
         bodyRef.current?.scrollTo({ top: 0 });
     }, [focus]);
+
+    useEffect(() => { if (requestedTab === "guards") setTab("guards"); }, [requestedTab]);
+
+    useEffect(() => {
+        setGuardEventListener(setGuardEvent);
+        return () => setGuardEventListener(undefined);
+    }, []);
 
     const guildId = useStateFromStores([SelectedGuildStore], () => SelectedGuildStore.getGuildId());
     const channelId = useStateFromStores([SelectedChannelStore], () => SelectedChannelStore.getChannelId());
@@ -918,6 +240,9 @@ function FriendsInVoicePage() {
                     <div className={cl("tab", tab === "runaway" && "tab-active")} onClick={() => setTab("runaway")}>
                         🏃 Run away <span className={cl("count")}>{blacklist.length}</span>
                     </div>
+                    <div className={cl("tab", tab === "guards" && "tab-active")} onClick={() => setTab("guards")}>
+                        🛡️ Personal Guards <span className={cl("count")}>{settings.store.personalGuards.filter(grant => grant.actions.length).length}</span>
+                    </div>
                 </div>
                 <div className={cl("page-sub")}>{friendsInVoice} friend{friendsInVoice === 1 ? "" : "s"} in voice</div>
                 <div className={cl("close")} onClick={() => setPageOpen(false)} title="Close (Esc)">✕</div>
@@ -928,6 +253,7 @@ function FriendsInVoicePage() {
                 {tab === "mine" && <MyListTab data={data} />}
                 {tab === "alerts" && <AlertsTab data={data} />}
                 {tab === "runaway" && <RunAwayTab data={data} />}
+                {tab === "guards" && <PersonalGuardsTab store={settings.store} event={guardEvent} onChange={refreshGuards} clearEvent={() => setGuardEvent(null)} />}
                 <div className={cl("note")}>
                     Discord only shares voice activity and online status for servers you're also in, so people in servers you haven't joined won't show up.
                     {" · "}v{VERSION}{" · "}
@@ -1038,6 +364,9 @@ const UserContextPatch: NavContextMenuPatchCallback = (children, { user }: { use
     const notifyVoice = inList("notifyVoice", user.id);
     const notify = inList("notifyOnline", user.id);
     const blocked = inList("blacklist", user.id);
+    const guardActions = settings.store.knownGuardGrants.find(grant => grant.userId === user.id)?.actions ?? [];
+    const myId = UserStore.getCurrentUser()?.id;
+    const sharedVoice = myId && VoiceStateStore.getVoiceStateForUser(myId)?.channelId && VoiceStateStore.getVoiceStateForUser(myId)?.channelId === VoiceStateStore.getVoiceStateForUser(user.id)?.channelId;
 
     children.push(
         <Menu.MenuGroup>
@@ -1062,6 +391,14 @@ const UserContextPatch: NavContextMenuPatchCallback = (children, { user }: { use
                 color={blocked ? undefined : "danger"}
                 action={() => toggleInList("blacklist", user.id)}
             />
+            <Menu.MenuItem id="vc-fiv-add-guard" label="Add to Personal Guards" action={() => {
+                if (!settings.store.personalGuards.some(grant => grant.userId === user.id)) setGrant(settings.store, user.id, GUARD_ACTIONS);
+                requestedTab = "guards";
+                setPageOpen(true);
+            }} />
+            {sharedVoice && guardActions.length > 0 && <Menu.MenuItem id="vc-fiv-guard-actions" label="Guard Actions">
+                {guardActions.map(action => <Menu.MenuItem key={action} id={`vc-fiv-guard-${action}`} label={GUARD_LABELS[action]} action={() => prepareGuardCommand(user.id, action)} />)}
+            </Menu.MenuItem>}
         </Menu.MenuGroup>
     );
 };
@@ -1116,6 +453,9 @@ export default definePlugin({
         VOICE_STATE_UPDATES({ voiceStates }: { voiceStates: { userId: string; channelId?: string | null; }[]; }) {
             onVoiceStateUpdates(voiceStates);
         },
+        MESSAGE_CREATE({ message }: { message: { id: string; channel_id: string; content: string; author: { id: string; bot?: boolean; }; }; }) {
+            handleGuardMessage(settings.store, message);
+        },
     },
 
     renderButton: ErrorBoundary.wrap(ServerListButton, { noop: true }),
@@ -1146,15 +486,15 @@ export default definePlugin({
         addServerListElement(ServerListRenderPosition.Above, this.renderButton);
 
         setTimeout(() => checkForUpdate(), 10_000);
-        updateTimer = setInterval(() => checkForUpdate(), 6 * 60 * 60 * 1000);
+        startUpdateTimer();
     },
 
     stop() {
+        clearGuardRuntime();
         removeMessageAccessory("FriendsInVoiceSmartReplies");
         setPageOpen(false);
         PresenceStore.removeChangeListener(onPresenceChange);
-        clearInterval(updateTimer);
-        clearTimeout(reseedTimer);
+        stopUpdateTimer();
         removeServerListElement(ServerListRenderPosition.Above, this.renderButton);
     },
 });
