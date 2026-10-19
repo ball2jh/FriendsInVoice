@@ -9,6 +9,7 @@ import { insertTextIntoChatInputBox } from "@utils/discord";
 import { findByPropsLazy } from "@webpack";
 import { ChannelActionCreators, ChannelStore, GuildMemberStore, GuildStore, MediaEngineStore, SelectedChannelStore, SelectedGuildStore, UserStore, VoiceStateStore } from "@webpack/common";
 
+import { openGuardsPage } from ".";
 import { getGuardKeys, openGuardPayload, publicKeyString, sealGuardPayload, validatePublicKey } from "./personalGuardsCrypto";
 import { GUARD_ACTIONS, GUARD_LABELS, makeCommand, makeGrantNotice, parseGuardMessage, serializeWire } from "./personalGuardsProtocol";
 import type { GuardAction, GuardGrant } from "./personalGuardsTypes";
@@ -116,7 +117,8 @@ function sendError(message: string) {
 export async function sendGuardKey(userId: string) {
     try {
         const publicKey = await publicKeyString(await getGuardKeys());
-        await openDraft(userId, serializeWire({ type: "key", version: 2, publicKey }));
+        if (await openDraft(userId, serializeWire({ type: "key", version: 2, publicKey })))
+            showNotification({ title: "Personal Guards", body: "Secure key DM is ready. Press Discord's Send button. The owner can then choose what you may do." });
     } catch { sendError("Secure key storage is unavailable. No message was prepared."); }
 }
 
@@ -126,7 +128,8 @@ export async function sendGuardGrant(store: GuardsStore, guardianId: string) {
     if (!ownerId || !key) { sendError("Ask this person to share their public key from the Personal Guards menu first."); return; }
     try {
         const wire = await sealGuardPayload(makeGrantNotice(ownerId, getGrant(store, guardianId)), await getGuardKeys(), key, ownerId, guardianId);
-        await openDraft(guardianId, serializeWire(wire));
+        if (await openDraft(guardianId, serializeWire(wire)))
+            showNotification({ title: "Personal Guards", body: "Encrypted access DM is ready. Press Discord's Send button to finish setup." });
     } catch { sendError("Could not prepare the encrypted grant. Nothing was sent."); }
 }
 
@@ -183,7 +186,11 @@ export async function handleGuardMessage(store: GuardsStore, message: IncomingMe
         if (!await validatePublicKey(wire.publicKey)) return;
         store.guardPeerKeys = [...store.guardPeerKeys.filter(peer => peer.userId !== senderId)
             .map(peer => ({ userId: peer.userId, publicKey: peer.publicKey })), { userId: senderId, publicKey: wire.publicKey }];
-        showNotification({ title: "Personal Guards", body: `Public key received from ${guardDisplayName(senderId)}. You can now send a grant.` });
+        showNotification({
+            title: "Personal Guards",
+            body: `Secure key received from ${guardDisplayName(senderId)}. Click to choose allowed actions and prepare their access DM.`,
+            onClick: openGuardsPage
+        });
         return;
     }
     if (wire.to !== me) return;
@@ -200,7 +207,7 @@ export async function handleGuardMessage(store: GuardsStore, message: IncomingMe
                 .map(grant => ({ userId: grant.userId, actions: [...grant.actions] })),
             ...(payload.actions.length ? [{ userId: senderId, actions: [...payload.actions] }] : []),
         ];
-        showNotification({ title: "Personal Guards", body: `${guardDisplayName(senderId)} updated your guard access.` });
+        showNotification({ title: "Personal Guards", body: `${guardDisplayName(senderId)} updated your guard access. Click to see your available actions.`, onClick: openGuardsPage });
         return;
     }
     if (payload.ownerId !== me || Math.abs(Date.now() - payload.createdAt) > 5 * 60_000) return;

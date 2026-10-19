@@ -37,12 +37,12 @@ export const UserContextPatch: NavContextMenuPatchCallback = (children, { user }
         <Menu.MenuItem id="vc-fiv-blacklist" label={blocked ? "Remove from Run away" : "Add to Run away"}
             color={blocked ? undefined : "danger"} action={() => toggleInList("blacklist", user.id)} />
         <Menu.MenuItem id="vc-fiv-personal-guards" label="Personal Guards">
-            <Menu.MenuItem id="vc-fiv-add-guard" label={settings.store.personalGuards.some(grant => grant.userId === user.id) ? "Manage guard access" : "Add to Personal Guards"}
+            <Menu.MenuItem id="vc-fiv-add-guard" label={settings.store.personalGuards.some(grant => grant.userId === user.id) ? "Manage guardian" : "Add as Guardian"}
                 action={() => {
-                    if (!settings.store.personalGuards.some(grant => grant.userId === user.id)) setGrant(settings.store, user.id, GUARD_ACTIONS);
+                    if (!settings.store.personalGuards.some(grant => grant.userId === user.id)) setGrant(settings.store, user.id, []);
                     openGuardsPage();
                 }} />
-            <Menu.MenuItem id="vc-fiv-send-key" label="Share public key" action={() => void sendGuardKey(user.id)} />
+            <Menu.MenuItem id="vc-fiv-send-key" label="Offer to guard (prepare secure key DM)" action={() => void sendGuardKey(user.id)} />
             {actions.length > 0 && <Menu.MenuItem id="vc-fiv-guard-actions" label="Guard Actions">
                 {actions.map(action => <Menu.MenuItem key={action} id={`vc-fiv-guard-${action}`} label={`Send ${GUARD_LABELS[action]}`}
                     action={() => void sendGuardCommand(settings.store, user.id, action)} />)}

@@ -28,7 +28,7 @@ import { AlertsTab, MyListTab, RunAwayTab, VoiceTab, WatchedCard } from "./voice
 
 export { inList, isOnline, toggleInList } from "./notifications";
 
-const VERSION = "1.9.0";
+const VERSION = "1.10.0";
 const DONATE_URL = "https://paypal.me/mfsafadi";
 
 const cl = classNameFactory("vc-fiv-");
@@ -109,6 +109,7 @@ export function openPrivateChannel(userId: string) {
 
 let pageOpen = false;
 let requestedTab: Tab = "voice";
+let guardsPageRequest = 0;
 let focusUserId: string | null = null;
 const pageListeners = new Set<() => void>();
 
@@ -131,6 +132,7 @@ export function openPageFor(id: string) {
 
 export function openGuardsPage() {
     requestedTab = "guards";
+    guardsPageRequest++;
     setPageOpen(true);
 }
 
@@ -176,6 +178,7 @@ function FriendsInVoicePage() {
     const focus = focusUserId;
     const data = useVoiceData(focus);
     const { notifyOnline, blacklist, notifyVoice } = settings.use(["notifyOnline", "blacklist", "notifyVoice"]);
+    settings.use(["personalGuards", "knownGuardGrants", "guardPeerKeys"]);
     const [tab, setTab] = useState<Tab>(requestedTab);
     const [, refreshGuards] = useReducer(value => value + 1, 0);
     const [rect, setRect] = useState(getContentRect);
@@ -187,7 +190,7 @@ function FriendsInVoicePage() {
         bodyRef.current?.scrollTo({ top: 0 });
     }, [focus]);
 
-    useEffect(() => { if (requestedTab === "guards") setTab("guards"); }, [requestedTab]);
+    useEffect(() => { if (requestedTab === "guards") setTab("guards"); }, [guardsPageRequest]);
 
 
     const guildId = useStateFromStores([SelectedGuildStore], () => SelectedGuildStore.getGuildId());
