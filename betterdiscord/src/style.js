@@ -1,0 +1,19 @@
+export const STYLE = `
+.fivbd-launch{position:fixed;bottom:82px;left:76px;z-index:9000;padding:8px 11px;border-radius:10px;border:1px solid var(--border-subtle);background:var(--background-floating);color:var(--text-normal);cursor:pointer;box-shadow:0 4px 16px #0005}
+.fivbd-shade{position:fixed;inset:0;z-index:10000;background:#0009;display:flex;align-items:center;justify-content:center;padding:18px}
+.fivbd-panel{width:min(920px,100%);max-height:90vh;display:flex;flex-direction:column;background:var(--background-primary);color:var(--text-normal);border:1px solid var(--border-subtle);border-radius:14px;box-shadow:0 18px 55px #0008;overflow:hidden}
+.fivbd-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border-subtle)}
+.fivbd-head h2{margin:0;font-size:19px}.fivbd-tabs{display:flex;flex-wrap:wrap;gap:5px;padding:10px 16px;border-bottom:1px solid var(--border-subtle)}
+.fivbd-body{padding:16px 18px;overflow:auto;min-height:260px}.fivbd-foot{padding:10px 18px;border-top:1px solid var(--border-subtle);display:flex;justify-content:space-between;align-items:center;color:var(--text-muted)}
+.fivbd-panel button,.fivbd-setting button{cursor:pointer;padding:6px 10px;border-radius:7px;border:1px solid var(--border-subtle);background:var(--background-secondary);color:var(--text-normal)}
+.fivbd-panel button:disabled{cursor:not-allowed;opacity:.5}.fivbd-panel button:hover:not(:disabled){background:var(--background-mod-strong)}
+.fivbd-panel .active{background:var(--brand-500);color:white}.fivbd-panel .danger{color:var(--status-danger,#f23f43)}
+.fivbd-search,.fivbd-setting input{box-sizing:border-box;width:100%;max-width:440px;padding:8px;margin:0 0 14px;border:1px solid var(--border-subtle);border-radius:7px;background:var(--input-background);color:var(--text-normal)}
+.fivbd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin:12px 0 20px}
+.fivbd-card{padding:13px;border:1px solid var(--border-subtle);border-radius:10px;background:var(--background-secondary)}
+.fivbd-card h3{margin:0 0 7px;font-size:15px}.fivbd-card p{margin:5px 0;color:var(--text-muted)}
+.fivbd-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.fivbd-person{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-subtle)}
+.fivbd-muted{color:var(--text-muted)}.fivbd-guard-options{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0}.fivbd-guard-options label{display:flex;align-items:center;gap:4px}
+.fivbd-empty{padding:20px;text-align:center;color:var(--text-muted)}.fivbd-setting{display:flex;flex-direction:column;gap:12px;padding:12px;color:var(--text-normal)}
+.fivbd-setting label{display:flex;align-items:center;gap:7px}.fivbd-setting input[type=checkbox]{width:auto;margin:0}
+`;

@@ -1,6 +1,6 @@
 # 🎧 FriendsInVoice: a Vencord plugin
 
-**[العربية](README.ar.md)** · [Install](#install) · [Contributing](CONTRIBUTING.md) · [License](LICENSE)
+**[العربية](README.ar.md)** · [Install](#install) · [BetterDiscord port](betterdiscord/README.md) · [Contributing](CONTRIBUTING.md) · [License](LICENSE)
 
 [![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://paypal.me/mfsafadi)
 
