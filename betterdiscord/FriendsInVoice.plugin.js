@@ -366,6 +366,7 @@ var GUARD_LABELS = {
   disconnect: "Disconnect from voice"
 };
 var PREFIX = "[FriendsInVoice Guard v2] ";
+var WRAPPED = /\|\|`\[FriendsInVoice Guard v2\] (\{[^`]*\})`\|\|/;
 var SNOWFLAKE = /^\d{17,20}$/;
 var BASE64_URL = /^[A-Za-z0-9_-]+$/;
 function isUserId(value) {
@@ -384,14 +385,20 @@ function makeCommand(ownerId, action, inviteNonce) {
 function makeGrantNotice(ownerId, actions) {
   return { kind: "grant", ownerId, actions: GUARD_ACTIONS.filter((action) => actions.includes(action)), createdAt: Date.now() };
 }
-function serializeWire(wire) {
-  return PREFIX + JSON.stringify(wire);
+function serializeWire(wire, summary = "Personal Guards message") {
+  return `\u{1F6E1}\uFE0F ${summary} (FriendsInVoice) ||\`${PREFIX}${JSON.stringify(wire)}\`||`;
+}
+function guardJson(content) {
+  if (content.length > 3e3 || content.split(PREFIX).length !== 2) return null;
+  if (content.startsWith(PREFIX)) return content.slice(PREFIX.length);
+  return WRAPPED.exec(content)?.[1] ?? null;
 }
 function parseGuardMessage(content) {
-  if (!content.startsWith(PREFIX) || content.length > 3e3) return null;
+  const json = guardJson(content);
+  if (!json) return null;
   let data;
   try {
-    data = JSON.parse(content.slice(PREFIX.length));
+    data = JSON.parse(json);
   } catch {
     return null;
   }

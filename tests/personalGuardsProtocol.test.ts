@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { openGuardPayload, publicKeyString, sealGuardPayload, validatePublicKey } from "../friendsInVoice/personalGuardsCrypto";
-import { makeCommand, makeGrantNotice, newGuardNonce, parseGuardMessage, serializeWire } from "../friendsInVoice/personalGuardsProtocol";
+import { inviteSummary, isGuardMessage, makeCommand, makeGrantNotice, newGuardNonce, parseGuardMessage, serializeWire } from "../friendsInVoice/personalGuardsProtocol";
 
 const ownerId = "123456789012345678";
 const guardianId = "234567890123456789";
@@ -83,4 +83,35 @@ test("normalization does not accept arbitrary punctuation or joined guard envelo
     const message = serializeWire(wire);
     assert.equal(parseGuardMessage(serializeWire({ ...wire, publicKey: "A".repeat(86) + "." })), null);
     assert.equal(parseGuardMessage(message + message), null);
+});
+
+test("messages show a readable line and keep the data in a collapsed spoiler", async () => {
+    const owner = await pair();
+    const guardian = await pair();
+    const nonce = newGuardNonce();
+    const wire = { type: "invite", version: 3, publicKey: await publicKeyString(owner), actions: ["mute", "deafen"], nonce } as const;
+    const text = serializeWire({ ...wire, actions: [...wire.actions] }, inviteSummary(["deafen", "mute"]));
+    assert.match(text, /^🛡️ Personal Guard invite: mute microphone, deafen \(FriendsInVoice\) \|\|`\[FriendsInVoice Guard v2\] \{.*\}`\|\|$/);
+    assert.deepEqual(parseGuardMessage(text), { ...wire, actions: [...wire.actions] });
+    assert.equal(isGuardMessage(text), true);
+
+    // a command's readable line must not reveal the action
+    const sealed = await sealGuardPayload(makeCommand(ownerId, "disconnect", nonce), guardian, await publicKeyString(owner), guardianId, ownerId);
+    const command = serializeWire(sealed, "Personal Guard action");
+    assert.ok(!/disconnect|mute|deafen/i.test(command));
+    assert.equal(parseGuardMessage(command)?.type, "sealed");
+});
+
+test("messages from before the readable format still parse", async () => {
+    const owner = await pair();
+    const legacy = "[FriendsInVoice Guard v2] " + JSON.stringify({ type: "invite", version: 3, publicKey: await publicKeyString(owner), actions: ["mute"], nonce: newGuardNonce() });
+    assert.equal(parseGuardMessage(legacy)?.type, "invite");
+    assert.equal(isGuardMessage(legacy), true);
+});
+
+test("plain mentions of the format and broken spoilers are ignored", () => {
+    assert.equal(isGuardMessage("I use [FriendsInVoice Guard v2] sometimes"), false);
+    assert.equal(parseGuardMessage("🛡️ hi ||`[FriendsInVoice Guard v2] {\"type\":\"invite\"}`||"), null);
+    assert.equal(parseGuardMessage("🛡️ hi ||[FriendsInVoice Guard v2] {}||"), null);
+    assert.equal(parseGuardMessage("x".repeat(3001)), null);
 });
