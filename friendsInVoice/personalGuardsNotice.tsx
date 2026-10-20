@@ -9,6 +9,7 @@ import { React, useEffect, useState } from "@webpack/common";
 
 import { GUARD_LABELS } from "./personalGuardsProtocol";
 import { guardDisplayName, type GuardEvent, type GuardsStore, subscribeGuardEvents } from "./personalGuardsRuntime";
+import { writeGuardSetting } from "./personalGuardsSettings";
 
 const cl = classNameFactory("vc-fiv-");
 const BLOCK_MINUTES = [5, 15, 30, 60, 120];
@@ -28,9 +29,9 @@ function Notice({ event, store, dismiss }: { event: GuardEvent; store: GuardsSto
                 </select>
             </label>
             <button onClick={() => {
-                store.guardBlocks = [...store.guardBlocks.filter(item => item.userId !== event.guardianId)
+                writeGuardSetting(store, "guardBlocks", [...store.guardBlocks.filter(item => item.userId !== event.guardianId)
                     .map(item => ({ userId: item.userId, until: item.until })),
-                    { userId: event.guardianId, until: Date.now() + minutes * 60_000 }];
+                    { userId: event.guardianId, until: Date.now() + minutes * 60_000 }]);
                 setBlocked(true);
             }}>{blocked ? "Blocked" : "Block commands"}</button>
             <button onClick={dismiss} aria-label="Dismiss notification">✕</button>

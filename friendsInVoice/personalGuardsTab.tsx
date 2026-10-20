@@ -10,6 +10,7 @@ import { openUserProfileModal, React, UserStore, useState } from "@webpack/commo
 import { ownerSetupMessage, ownerSetupStep } from "./personalGuardsOnboarding";
 import { GUARD_ACTIONS, GUARD_LABELS } from "./personalGuardsProtocol";
 import { acceptGuardInvite, getGrant, guardDisplayName, type GuardsStore, hasGuardKey, revokeGuard, sendGuardCommand, sendGuardInvite, setGrant, sharesVoice } from "./personalGuardsRuntime";
+import { writeGuardSetting } from "./personalGuardsSettings";
 import type { GuardAction } from "./personalGuardsTypes";
 
 const cl = classNameFactory("vc-fiv-");
@@ -106,7 +107,7 @@ export function PersonalGuardsTab({ store, refresh }: { store: GuardsStore; refr
                 <p className={cl("guard-step")}>Allowed: {invite.actions.map(action => GUARD_LABELS[action]).join(", ")}</p>
                 <div className={cl("guard-controls")}>
                     <button onClick={() => { acceptGuardInvite(store, invite.userId); refresh(); }}>Accept invitation</button>
-                    <button onClick={() => { store.pendingGuardInvites = store.pendingGuardInvites.filter(item => item.userId !== invite.userId); refresh(); }}>Decline</button>
+                    <button onClick={() => { writeGuardSetting(store, "pendingGuardInvites", store.pendingGuardInvites.filter(item => item.userId !== invite.userId)); refresh(); }}>Decline</button>
                 </div>
             </section>)}
         </div></>}

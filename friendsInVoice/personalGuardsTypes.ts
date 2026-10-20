@@ -52,3 +52,26 @@ export interface GuardSealedWire {
 }
 
 export type GuardWire = GuardKeyWire | GuardSealedWire | GuardInviteWire;
+
+export interface GuardsStore {
+    personalGuards: GuardGrant[];
+    knownGuardGrants: GuardGrant[];
+    pendingGuardInvites: { userId: string; actions: GuardAction[]; publicKey: string; nonce: string; }[];
+    guardPeerKeys: { userId: string; publicKey: string; }[];
+    guardBlocks: { userId: string; until: number; }[];
+    guardReplay: { nonce: string; createdAt: number; }[];
+}
+
+export interface GuardEvent {
+    id: string;
+    guardianId: string;
+    action: GuardAction;
+    undo(): void;
+}
+
+export interface IncomingMessage {
+    id: string;
+    channel_id: string;
+    content: string;
+    author: { id: string; bot?: boolean; };
+}
