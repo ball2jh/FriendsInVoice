@@ -14,7 +14,7 @@ import type { UpdateStatus } from "./updateTypes";
 import { isNewer } from "./updateVersion";
 import { describeChannel, displayName } from "./voiceContent";
 const StatusSettings = getUserSettingLazy<string>("status", "status")!;
-const VERSION = "1.11.0";
+const VERSION = "1.11.1";
 const REPO = "mPhpMaster/FriendsInVoice";// ---------- lists ----------
 const UpdateNative = VencordNative.pluginHelpers.FriendsInVoice as PluginNative<typeof import("./native")>;
 

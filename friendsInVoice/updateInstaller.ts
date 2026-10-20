@@ -10,6 +10,7 @@ import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/p
 import { dirname, join, resolve } from "node:path";
 
 import { app, type IpcMainInvokeEvent } from "electron";
+import { readFileSync as readOriginalFileSync } from "original-fs";
 
 import { selectReleaseAsset, validatePackage } from "./updatePackage";
 import type { ReleaseInfo, UpdateStatus } from "./updateTypes";
@@ -29,7 +30,7 @@ export function getUpdateStatus(_: IpcMainInvokeEvent): UpdateStatus {
 
 async function getVencordRoot(): Promise<string> {
     const asar = join(process.resourcesPath, "app.asar");
-    const contents = (await readFile(asar)).toString("utf8");
+    const contents = readOriginalFileSync(asar).toString("utf8");
     const patch = process.platform === "win32"
         ? contents.match(/require\("([^"\r\n]+dist\\\\patcher\.js)"\)/)
         : contents.match(/(\/[^"'`\r\n]+\/dist\/patcher\.js)/);

@@ -70,6 +70,8 @@ These don't stop a server's own bots or rules from kicking inactive people, and 
 
 The plugin checks GitHub for new releases (at startup and every 6 hours). On Windows and macOS, click the new-version notification to download the package from this repository's GitHub Release, verify its SHA-256 digest, install the plugin source, build Vencord, and restart Discord. Your plugin settings and other plugins stay in place. A failed build restores the previous source and tries to rebuild it. Linux users can use the manual update steps below. You can also click **Check for updates** at the bottom of the page. The check can be turned off in the plugin settings. Versions before v1.9.0 need one manual update to gain one-click updating.
 
+**macOS v1.11.0:** its update button cannot read Discord's `app.asar` archive. Install v1.11.1 manually once with `install.command`; later updates use the repaired updater.
+
 ## Install
 
 > Custom plugins can't be added to the regular Vencord download. Vencord has to be built from source on your PC, and the installer below does all of that for you. Windows instructions follow; the included `install.command` and `install.sh` support macOS and Linux.
