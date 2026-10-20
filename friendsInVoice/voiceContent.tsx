@@ -23,7 +23,6 @@ export interface Member {
     isFriend: boolean;
     isWatched: boolean;
     isMe: boolean;
-    showsOffline: boolean;
     muted: boolean;
     deafened: boolean;
     streaming: boolean;
@@ -77,8 +76,6 @@ function buildRoom(channel: Channel, states: any[], friendIds: Set<string>, watc
             isFriend: friendIds.has(user.id),
             isWatched: watched.has(user.id),
             isMe,
-            // Discord only reliably sends presence for friends, so only flag those
-            showsOffline: !isMe && friendIds.has(user.id) && !isOnline(PresenceStore.getStatus(user.id)),
             muted: !!(s.mute || s.selfMute),
             deafened: !!(s.deaf || s.selfDeaf),
             streaming: !!s.selfStream
@@ -298,6 +295,10 @@ export function StarButton({ userId }: { userId: string; }) {
 }
 
 export function MemberRow({ member }: { member: Member; }) {
+    // read here, not in collect(), so the tag follows status changes while the page is open
+    const status = useStateFromStores([PresenceStore], () => PresenceStore.getStatus(member.user.id));
+    // Discord only reliably sends presence for friends, so only flag those
+    const showsOffline = !member.isMe && member.isFriend && !isOnline(status);
     return (
         <div
             className={cl("member", (member.isFriend || member.isWatched) && "friend", !member.isMe && "clickable")}
@@ -309,7 +310,7 @@ export function MemberRow({ member }: { member: Member; }) {
             </span>
             {member.isWatched && <span className={cl("pill", "pill-watch")}>MY LIST</span>}
             {member.isFriend && <span className={cl("pill", "pill-friend")}>FRIEND</span>}
-            {member.showsOffline && <span className={cl("pill", "pill-offline")} title="Their status shows offline, but they're in this room">SHOWS OFFLINE</span>}
+            {showsOffline && <span className={cl("pill", "pill-offline")} title="Their status shows offline, but they're in this room">SHOWS OFFLINE</span>}
             {member.streaming && <span className={cl("pill", "pill-live")}>LIVE</span>}
             {member.deafened ? <span className={cl("tag")} title="Deafened">🔇</span>
                 : member.muted && <span className={cl("tag")} title="Muted">🎙️✕</span>}

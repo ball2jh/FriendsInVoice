@@ -19,6 +19,7 @@ import { ChannelActionCreators, ChannelStore, ContextMenuApi, Menu, PermissionSt
 
 import { checkForUpdate, onPresenceChange, onVoiceStateUpdates, seedStatuses, seedVoiceChannels, startQuietPeriod, startUpdateTimer, stopUpdateTimer } from "./notifications";
 import { GuardNotificationHost } from "./personalGuardsNotice";
+import { isGuardMessage } from "./personalGuardsProtocol";
 import { clearGuardRuntime, handleGuardMessage } from "./personalGuardsRuntime";
 import { PersonalGuardsTab } from "./personalGuardsTab";
 import { SmartReplies } from "./smartReplies";
@@ -154,9 +155,18 @@ function getNav() {
     return document.querySelector<HTMLElement>(`.${cl("server-button")}`)?.closest("nav") ?? null;
 }
 
+// Discord's user panel (name, mute, deafen, voice connection) sits at the bottom-left, across the server list
+function getUserPanel() {
+    return document.querySelector<HTMLElement>('section[class^="panels_"], section[class*=" panels_"]');
+}
+
 function getContentRect() {
     const r = getNav()?.getBoundingClientRect();
-    return { left: r?.right ?? 72, top: r?.top ?? 0 };
+    const panel = getUserPanel()?.getBoundingClientRect();
+    const left = r?.right ?? 72;
+    // stop above the user panel when it reaches into the page, so its controls stay usable
+    const bottom = panel && panel.right > left ? Math.max(0, window.innerHeight - panel.top + 8) : 0;
+    return { left, top: r?.top ?? 0, bottom };
 }
 
 function Spotlight({ id, data }: { id: string; data: ReturnType<typeof useVoiceData>; }) {
@@ -213,6 +223,11 @@ function FriendsInVoicePage() {
             if (!(e.target as Element | null)?.closest(`.${cl("server-button")}`)) setPageOpen(false);
         };
 
+        // the user panel grows when you join voice
+        const panel = getUserPanel();
+        const panelObserver = new ResizeObserver(onResize);
+        if (panel) panelObserver.observe(panel);
+
         window.addEventListener("keydown", onKey);
         window.addEventListener("resize", onResize);
         nav?.addEventListener("click", onNavClick, true);
@@ -220,6 +235,7 @@ function FriendsInVoicePage() {
             window.removeEventListener("keydown", onKey);
             window.removeEventListener("resize", onResize);
             nav?.removeEventListener("click", onNavClick, true);
+            panelObserver.disconnect();
         };
     }, []);
 
@@ -227,7 +243,7 @@ function FriendsInVoicePage() {
     const watchedInVoice = data.watchlist.filter(id => data.roomByUser.has(id)).length;
 
     return (
-        <div className={cl("page")} style={{ left: rect.left, top: rect.top }}>
+        <div className={cl("page")} style={{ left: rect.left, top: rect.top, bottom: rect.bottom }}>
             <div className={cl("page-header")}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d={HEADSET_PATH} /></svg>
                 <div className={cl("page-title")}>Friends in Voice</div>
@@ -420,6 +436,10 @@ export default definePlugin({
             const { message } = props;
             if (!settings.store.smartReplies || !message?.author || message.author.bot) return null;
             if (message.author.id === UserStore.getCurrentUser()?.id) return null;
+            // only messages people wrote (DEFAULT, REPLY), not system messages such as "accepted your friend request":
+            // https://docs.discord.com/developers/resources/message#message-object-message-types
+            if (message.type !== 0 && message.type !== 19) return null;
+            if (isGuardMessage(message.content ?? "")) return null;
 
             const channel = props.channel ?? ChannelStore.getChannel(message.channel_id);
             if (!channel?.isDM()) return null;
