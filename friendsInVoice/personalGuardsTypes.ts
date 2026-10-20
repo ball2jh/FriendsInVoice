@@ -75,3 +75,14 @@ export interface IncomingMessage {
     content: string;
     author: { id: string; bot?: boolean; };
 }
+
+export interface GuardDraftBridge {
+    open(userId: string): Promise<void>;
+    currentDm(userId: string): string | null;
+    getDraft(channelId: string): string;
+    insert(text: string): void;
+    reveal(): void;
+    wait(): Promise<void>;
+}
+
+export type GuardDraftResult = "ready" | "busy" | "occupied" | "unavailable";

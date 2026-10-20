@@ -7,10 +7,11 @@
 import { showNotification } from "@api/Notifications";
 import { insertTextIntoChatInputBox } from "@utils/discord";
 import { findByPropsLazy } from "@webpack";
-import { ChannelActionCreators, ChannelStore, GuildMemberStore, GuildStore, MediaEngineStore, SelectedChannelStore, SelectedGuildStore, UserStore, VoiceStateStore } from "@webpack/common";
+import { ChannelActionCreators, ChannelStore, DraftStore, DraftType, GuildMemberStore, GuildStore, MediaEngineStore, SelectedChannelStore, SelectedGuildStore, UserStore, VoiceStateStore } from "@webpack/common";
 
-import { openGuardsPage } from ".";
+import { openGuardsPage, setPageOpen } from ".";
 import { getGuardKeys, openGuardPayload, publicKeyString, sealGuardPayload, validatePublicKey } from "./personalGuardsCrypto";
+import { createGuardDraftPreparer } from "./personalGuardsDraft";
 import { GUARD_ACTIONS, GUARD_LABELS, makeCommand, makeGrantNotice, newGuardNonce, parseGuardMessage, serializeWire } from "./personalGuardsProtocol";
 import { saveGuardInvitation, writeGuardSetting } from "./personalGuardsSettings";
 import type { GuardAction, GuardEvent, GuardsStore, IncomingMessage } from "./personalGuardsTypes";
@@ -106,19 +107,27 @@ export function hasGuardKey(store: GuardsStore, userId: string): boolean {
     return !!peerKey(store, userId);
 }
 
+const prepareDraft = createGuardDraftPreparer({
+    open: async userId => { await ChannelActionCreators.openPrivateChannel({ recipientIds: [userId] }); },
+    currentDm: userId => {
+        const channel = ChannelStore.getChannel(SelectedChannelStore.getChannelId());
+        return channel?.isDM() && channel.recipients?.includes(userId) ? channel.id : null;
+    },
+    getDraft: channelId => DraftStore.getDraft(channelId, DraftType.ChannelMessage) ?? "",
+    insert: insertTextIntoChatInputBox,
+    reveal: () => setPageOpen(false),
+    wait: () => new Promise(resolve => setTimeout(resolve, 100))
+});
+
 async function openDraft(userId: string, text: string): Promise<boolean> {
-    try {
-        await ChannelActionCreators.openPrivateChannel({ recipientIds: [userId] });
-        for (let attempt = 0; attempt < 20; attempt++) {
-            const channel = ChannelStore.getChannel(SelectedChannelStore.getChannelId());
-            if (channel?.isDM() && channel.recipients?.includes(userId)) {
-                insertTextIntoChatInputBox(text);
-                return true;
-            }
-            await new Promise(resolve => setTimeout(resolve, 100));
-        }
-    } catch { /* The draft stays untouched. */ }
-    showNotification({ title: "Personal Guards", body: "Could not open the intended DM. Nothing was inserted." });
+    const result = await prepareDraft(userId, text);
+    if (result === "ready") return true;
+    const messages = {
+        occupied: "This DM already has an unsent draft. Send or clear it first, then choose one guard action again. Nothing was added.",
+        busy: "A guard message is already being prepared. Wait for it before choosing another action.",
+        unavailable: "Could not confirm the guard message in the intended DM. Check its draft before trying again."
+    };
+    sendError(messages[result]);
     return false;
 }
 
@@ -195,7 +204,12 @@ async function applyAction(action: GuardAction): Promise<(() => void) | null> {
 export async function handleGuardMessage(store: GuardsStore, message: IncomingMessage) {
     if (!message?.id || seen.has(message.id) || message.author?.bot) return;
     const wire = parseGuardMessage(message.content);
-    if (!wire || !ChannelStore.getChannel(message.channel_id)?.isDM()) return;
+    if (!ChannelStore.getChannel(message.channel_id)?.isDM()) return;
+    if (!wire) {
+        if (message.author.id !== UserStore.getCurrentUser()?.id && message.content.startsWith("[FriendsInVoice Guard v2]"))
+            sendError("Invalid guard message. Send one fresh invitation or command by itself, without other text or a previous draft.");
+        return;
+    }
     seen.add(message.id);
     if (seen.size > 1000) seen.clear();
     const me = UserStore.getCurrentUser()?.id;

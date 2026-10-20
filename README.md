@@ -48,6 +48,8 @@ Right-click someone and choose **Personal Guards → Add as Guardian**. The Pers
 
 Select the allowed actions, click **Invite guardian**, and press Discord's **Send** button on the prepared DM. The guardian opens **Personal Guards** and clicks **Accept invitation**; they do not need to send a setup message. The invitation contains the allowed action names and your public key, so its permissions are visible to the DM recipient. Your private key stays in local non-extractable browser storage. Each later command is encrypted with ECDH and AES-GCM. The guardian sees only accepted **Guard Actions** while you share a voice channel. Your client checks the Discord sender, current grant, invitation identity, freshness, replay, and shared voice channel before acting. No moderator permission is needed. A received-command notification offers **Undo** and a temporary block. If a command is rejected, your client now shows the reason. **Revoke and remove** immediately removes local access; the guardian's menu may keep stale actions until they receive a new invitation, but those commands are rejected.
 
+Send each guard invitation or command as a separate DM. Preparing a message opens the conversation and reveals the draft. If that DM already has an unsent draft, the plugin keeps it and asks you to send or clear it before preparing another guard message. Rapid action clicks cannot combine messages.
+
 ### 💬 Smart replies in DMs
 
 When someone sends you a direct message, a few suggested replies appear under their latest message. Click one to put it in the message box; you can edit it before pressing Enter, and nothing is sent by itself.
