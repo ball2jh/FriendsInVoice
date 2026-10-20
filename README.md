@@ -50,7 +50,7 @@ Select the allowed actions, click **Invite guardian**, and press Discord's **Sen
 
 Under **Access others gave you**, click **Remove access** to remove an accepted owner from your local list and its Guard Actions menu. This does not change the owner's own guardian list.
 
-Send each guard invitation or command as a separate DM. Preparing a message opens the conversation and reveals the draft. If that DM already has an unsent draft, the plugin keeps it and asks you to send or clear it before preparing another guard message. Rapid action clicks cannot combine messages.
+Send each guard invitation or command as a separate DM. Preparing a message opens the conversation and reveals the draft. If that DM already has an unsent draft, the plugin keeps it and asks you to send or clear it before preparing another guard message. Rapid action clicks cannot combine messages. Encoded fields tolerate spaces, tabs, and line breaks introduced during message composition or delivery; the decoded key, wire format, and encrypted authentication are still validated.
 
 ### 💬 Smart replies in DMs
 

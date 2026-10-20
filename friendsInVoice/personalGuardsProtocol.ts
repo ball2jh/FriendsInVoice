@@ -47,6 +47,11 @@ export function parseGuardMessage(content: string): GuardWire | null {
     try { data = JSON.parse(content.slice(PREFIX.length)); } catch { return null; }
     if (!data || typeof data !== "object") return null;
     const value = data as Record<string, unknown>;
+    // Discord composer extensions can insert spacing into long encoded words.
+    // Remove only transport whitespace; all field checks and AES-GCM verification still apply.
+    for (const field of ["publicKey", "fromKey", "iv", "ciphertext"]) {
+        if (typeof value[field] === "string") value[field] = value[field].replace(/[ \t\r\n]/g, "");
+    }
     if (value.version !== 2 && value.version !== 3) return null;
     if (value.type === "key" && value.version === 2 && typeof value.publicKey === "string" &&
         value.publicKey.length === 87 && BASE64_URL.test(value.publicKey)) return value as unknown as GuardWire;
