@@ -156,11 +156,12 @@ export async function sendGuardGrant(store: GuardsStore, guardianId: string) {
 
 export async function sendGuardCommand(store: GuardsStore, ownerId: string, action: GuardAction) {
     const guardianId = UserStore.getCurrentUser()?.id;
+    const grant = store.knownGuardGrants.find(item => item.userId === ownerId);
+    if (!grant?.actions.includes(action)) { sendError("No saved access for this action. Ask the owner to invite you again."); return; }
     const key = peerKey(store, ownerId);
     if (!guardianId || !key) { sendError("No public key for this owner. Ask them to send an updated grant."); return; }
     try {
-        const inviteNonce = store.knownGuardGrants.find(grant => grant.userId === ownerId)?.inviteNonce;
-        const wire = await sealGuardPayload(makeCommand(ownerId, action, inviteNonce), await getGuardKeys(), key, guardianId, ownerId);
+        const wire = await sealGuardPayload(makeCommand(ownerId, action, grant.inviteNonce), await getGuardKeys(), key, guardianId, ownerId);
         await openDraft(ownerId, serializeWire(wire));
     } catch { sendError("Could not prepare the encrypted command. Nothing was sent."); }
 }

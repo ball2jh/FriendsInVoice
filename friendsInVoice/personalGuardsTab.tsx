@@ -10,7 +10,7 @@ import { openUserProfileModal, React, UserStore, useState } from "@webpack/commo
 import { ownerSetupMessage, ownerSetupStep } from "./personalGuardsOnboarding";
 import { GUARD_ACTIONS, GUARD_LABELS } from "./personalGuardsProtocol";
 import { acceptGuardInvite, getGrant, guardDisplayName, type GuardsStore, hasGuardKey, revokeGuard, sendGuardCommand, sendGuardInvite, setGrant, sharesVoice } from "./personalGuardsRuntime";
-import { writeGuardSetting } from "./personalGuardsSettings";
+import { removeGuardAccess, writeGuardSetting } from "./personalGuardsSettings";
 import type { GuardAction } from "./personalGuardsTypes";
 
 const cl = classNameFactory("vc-fiv-");
@@ -66,7 +66,7 @@ function GuardianRow({ userId, store, refresh }: { userId: string; store: Guards
     </section>;
 }
 
-function AccessRow({ ownerId, store }: { ownerId: string; store: GuardsStore; }) {
+function AccessRow({ ownerId, store, refresh }: { ownerId: string; store: GuardsStore; refresh(): void; }) {
     const grant = store.knownGuardGrants.find(item => item.userId === ownerId);
     if (!grant) return null;
     const together = sharesVoice(ownerId);
@@ -78,6 +78,12 @@ function AccessRow({ ownerId, store }: { ownerId: string; store: GuardsStore; })
                 onClick={() => void sendGuardCommand(store, ownerId, action)}>Send {GUARD_LABELS[action]}</button>)}
         </div>
         {!together && <small>Join the same voice channel to use guard actions.</small>}
+        <div className={cl("guard-controls")}>
+            <button className={cl("guard-danger")} title="Remove this saved access from your device" onClick={() => {
+                removeGuardAccess(store, ownerId);
+                refresh();
+            }}>Remove access</button>
+        </div>
     </section>;
 }
 
@@ -113,7 +119,7 @@ export function PersonalGuardsTab({ store, refresh }: { store: GuardsStore; refr
         </div></>}
         <h3>Access others gave you</h3>
         <div className={cl("guards-grid")}>
-            {owners.map(grant => <AccessRow key={grant.userId} ownerId={grant.userId} store={store} />)}
+            {owners.map(grant => <AccessRow key={grant.userId} ownerId={grant.userId} store={store} refresh={refresh} />)}
         </div>
         {!store.knownGuardGrants.length && <p className={cl("guard-empty")}>No access yet. Ask the owner to invite you as a guardian, then accept the invitation here.</p>}
     </div>;

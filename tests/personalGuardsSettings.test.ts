@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { saveGuardInvitation, writeGuardSetting } from "../friendsInVoice/personalGuardsSettings";
+import { removeGuardAccess, saveGuardInvitation, writeGuardSetting } from "../friendsInVoice/personalGuardsSettings";
 import type { GuardsStore } from "../friendsInVoice/personalGuardsTypes";
 
 function proxied<Value extends object>(value: Value): Value {
@@ -49,4 +49,16 @@ test("every guard settings collection can cross IPC with retained proxied entrie
         assert.deepEqual(data[key], expected);
         assert.doesNotThrow(() => structuredClone(data[key]));
     }
+});
+
+test("removing received access preserves other owners and reciprocal guardian permissions", () => {
+    const { data, store } = settingsFixture();
+    data.knownGuardGrants.push({ userId: "other-owner", actions: ["deafen"], inviteNonce: "other-invite" });
+    const before = structuredClone(data);
+    removeGuardAccess(store, "owner");
+    assert.deepEqual(data.knownGuardGrants, [{ userId: "other-owner", actions: ["deafen"], inviteNonce: "other-invite" }]);
+    for (const key of Object.keys(data) as (keyof GuardsStore)[]) {
+        if (key !== "knownGuardGrants") assert.deepEqual(data[key], before[key]);
+    }
+    assert.doesNotThrow(() => removeGuardAccess(store, "owner"));
 });

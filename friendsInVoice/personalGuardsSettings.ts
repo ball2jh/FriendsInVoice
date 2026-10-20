@@ -16,3 +16,7 @@ export function saveGuardInvitation(store: GuardsStore, guardianId: string, nonc
     writeGuardSetting(store, "personalGuards", store.personalGuards.map(grant =>
         grant.userId === guardianId ? { ...grant, inviteNonce: nonce } : grant));
 }
+
+export function removeGuardAccess(store: GuardsStore, ownerId: string): void {
+    writeGuardSetting(store, "knownGuardGrants", store.knownGuardGrants.filter(grant => grant.userId !== ownerId));
+}
