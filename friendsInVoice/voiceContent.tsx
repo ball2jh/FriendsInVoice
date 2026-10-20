@@ -121,7 +121,7 @@ function collect(watchlist: string[], extra: string | null) {
         if (!states.some(s => s.userId !== myId && tracked(s.userId))) continue;
 
         const channel = ChannelStore.getChannel(channelId);
-        if (!channel) continue;
+        if (!channel || !canView(channel)) continue;
 
         const room = buildRoom(channel, states, friendIds, watched, myId);
         allRooms.push(room);
@@ -145,14 +145,39 @@ export function useVoiceData(extra: string | null = null) {
     return { ...data, watchlist, myChannel };
 }
 
+// Discord hides channels you can't view, and is starting to send them obfuscated as "___hidden___", so skip them:
+// https://docs.discord.com/developers/topics/permissions#implicit-permissions
+// https://docs.discord.com/developers/change-log (August 12, 2026)
+export function canView(channel: Channel) {
+    return !channel.guild_id || PermissionStore.can(PermissionsBits.VIEW_CHANNEL, channel);
+}
+
+/** The channel id if it's a channel this user can view, otherwise null */
+export function visibleChannelId(channelId: string | null | undefined) {
+    const channel = channelId ? ChannelStore.getChannel(channelId) : null;
+    return channel && canView(channel) ? channel.id : null;
+}
+
 function canJoin(channel: Channel) {
     if (!channel.guild_id) return true;
     return PermissionStore.can(PermissionsBits.VIEW_CHANNEL, channel) && PermissionStore.can(PermissionsBits.CONNECT, channel);
 }
 
+// a room at its user limit can only be joined with Move Members:
+// https://docs.discord.com/developers/topics/voice-connections
+function isFull(channel: Channel) {
+    const limit = channel.userLimit ?? 0;
+    if (!limit || PermissionStore.can(PermissionsBits.MOVE_MEMBERS, channel)) return false;
+    return Object.keys(VoiceStateStore.getVoiceStatesForChannel(channel.id) ?? {}).length >= limit;
+}
+
 function joinRoom(channel: Channel) {
     if (!canJoin(channel)) {
         showToast({ text: "You don't have permission to join this room", variant: "critical" });
+        return;
+    }
+    if (isFull(channel)) {
+        showToast({ text: "This room is full", variant: "critical" });
         return;
     }
     selectVoiceChannel(channel.id);
@@ -295,14 +320,15 @@ export function MemberRow({ member }: { member: Member; }) {
 
 export function JoinButton({ channel, inThisRoom }: { channel: Channel; inThisRoom: boolean; }) {
     const joinable = canJoin(channel);
+    const full = joinable && isFull(channel);
     return (
         <Button
             size="small"
             variant={inThisRoom ? "secondary" : "primary"}
-            disabled={inThisRoom || !joinable}
+            disabled={inThisRoom || !joinable || full}
             onClick={() => joinRoom(channel)}
         >
-            {inThisRoom ? "Joined" : joinable ? "Join" : "Locked"}
+            {inThisRoom ? "Joined" : !joinable ? "Locked" : full ? "Full" : "Join"}
         </Button>
     );
 }

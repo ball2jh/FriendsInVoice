@@ -15,7 +15,7 @@ import { definePluginSettings } from "@api/Settings";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { classNameFactory } from "@utils/css";
 import definePlugin, { OptionType } from "@utils/types";
-import { ChannelActionCreators, ChannelStore, ContextMenuApi, Menu, PresenceStore, React, ReactDOM, RelationshipStore, SelectedChannelStore, SelectedGuildStore, Tooltip, useEffect, useReducer, UserStore, useState, useStateFromStores, VoiceStateStore } from "@webpack/common";
+import { ChannelActionCreators, ChannelStore, ContextMenuApi, Menu, PermissionStore, PresenceStore, React, ReactDOM, RelationshipStore, SelectedChannelStore, SelectedGuildStore, Tooltip, useEffect, useReducer, UserStore, useState, useStateFromStores, VoiceStateStore } from "@webpack/common";
 
 import { checkForUpdate, onPresenceChange, onVoiceStateUpdates, seedStatuses, seedVoiceChannels, startQuietPeriod, startUpdateTimer, stopUpdateTimer } from "./notifications";
 import { GuardNotificationHost } from "./personalGuardsNotice";
@@ -23,7 +23,7 @@ import { clearGuardRuntime, handleGuardMessage } from "./personalGuardsRuntime";
 import { PersonalGuardsTab } from "./personalGuardsTab";
 import { SmartReplies } from "./smartReplies";
 import { UserContextPatch } from "./userContextMenu";
-import { useVoiceData } from "./voiceContent";
+import { useVoiceData, visibleChannelId } from "./voiceContent";
 import { AlertsTab, MyListTab, RunAwayTab, VoiceTab, WatchedCard } from "./voiceTabs";
 
 export { inList, isOnline, toggleInList } from "./notifications";
@@ -277,10 +277,10 @@ const HEADSET_PATH = "M12 2a10 10 0 0 0-10 10v5a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-6
 function ServerListButton() {
     const open = usePageOpen();
 
-    const count = useStateFromStores([VoiceStateStore, RelationshipStore], () => {
+    const count = useStateFromStores([VoiceStateStore, RelationshipStore, PermissionStore], () => {
         let n = 0;
         for (const id of RelationshipStore.getFriendIDs()) {
-            if (VoiceStateStore.getVoiceStateForUser(id)?.channelId) n++;
+            if (visibleChannelId(VoiceStateStore.getVoiceStateForUser(id)?.channelId)) n++;
         }
         return n;
     });

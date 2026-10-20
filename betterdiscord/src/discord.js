@@ -1,3 +1,8 @@
+// Discord permission bits: https://docs.discord.com/developers/topics/permissions#permissions-bitwise-permission-flags
+const VIEW_CHANNEL = 1n << 10n;
+const CONNECT = 1n << 20n;
+const MOVE_MEMBERS = 1n << 24n;
+
 export class DiscordBridge {
     constructor(api) {
         this.api = api;
@@ -9,6 +14,7 @@ export class DiscordBridge {
         this.presenceStore = webpack.getStore("PresenceStore");
         this.guildStore = webpack.getStore("GuildStore");
         this.memberStore = webpack.getStore("GuildMemberStore");
+        this.permissionStore = webpack.getStore("PermissionStore");
         this.selectedChannelStore = webpack.getStore("SelectedChannelStore");
         this.messageStore = webpack.getStore("MessageStore");
         this.mediaStore = webpack.getStore("MediaEngineStore");
@@ -25,7 +31,7 @@ export class DiscordBridge {
             item?.userSettingsAPIGroup === "status" && item?.userSettingsAPIName === "status");
         this.statusActions = webpack.getByKeys("setStatus");
         this.profileActions = webpack.getByKeys("openUserProfileModal");
-        if (!this.userStore || !this.channelStore || !this.voiceStore || !this.relationshipStore || !this.dispatcher)
+        if (!this.userStore || !this.channelStore || !this.voiceStore || !this.relationshipStore || !this.permissionStore || !this.dispatcher)
             throw new Error("Discord stores or dispatcher are unavailable in this client build.");
     }
     currentId() { return this.userStore.getCurrentUser()?.id ?? null; }
@@ -42,6 +48,22 @@ export class DiscordBridge {
     status(id) { return this.presenceStore?.getStatus?.(id) ?? "offline"; }
     voiceState(id) { return this.voiceStore.getVoiceStateForUser?.(id) ?? null; }
     voiceChannel(id) { return this.voiceState(id)?.channelId ?? null; }
+    // Discord hides channels you can't view, and is starting to send them obfuscated as "___hidden___":
+    // https://docs.discord.com/developers/topics/permissions#implicit-permissions
+    canView(channel) { return !channel.guild_id || !!this.permissionStore.can(VIEW_CHANNEL, channel); }
+    visibleVoiceChannel(id) {
+        const channel = this.channel(this.voiceChannel(id));
+        return channel && this.canView(channel) ? channel.id : null;
+    }
+    // "Locked" without Connect; "Full" at the user limit unless you have Move Members:
+    // https://docs.discord.com/developers/topics/voice-connections
+    joinBlocker(channel) {
+        if (!channel.guild_id) return null;
+        if (!this.permissionStore.can(VIEW_CHANNEL, channel) || !this.permissionStore.can(CONNECT, channel)) return "Locked";
+        const limit = channel.userLimit ?? 0;
+        if (!limit || this.permissionStore.can(MOVE_MEMBERS, channel)) return null;
+        return Object.keys(this.voiceStore.getVoiceStatesForChannel?.(channel.id) ?? {}).length >= limit ? "Full" : null;
+    }
     sharesVoice(id) {
         const mine = this.voiceChannel(this.currentId());
         return !!mine && mine === this.voiceChannel(id);
@@ -95,14 +117,21 @@ export class DiscordBridge {
         const friendIds = new Set(this.relationshipStore.getFriendIDs?.() ?? []);
         const tracked = new Set([...friendIds, ...watchlist]);
         const me = this.currentId();
+        // getAllVoiceStates() is keyed by guild id ("@me" for calls), then user id; group the states by their channel
+        const byChannel = new Map();
+        for (const states of Object.values(this.voiceStore.getAllVoiceStates?.() ?? {})) {
+            for (const state of Object.values(states ?? {})) {
+                if (!state?.channelId || !state.userId || !this.user(state.userId)) continue;
+                byChannel.set(state.channelId, [...byChannel.get(state.channelId) ?? [], state]);
+            }
+        }
         const result = [];
-        for (const [channelId, states] of Object.entries(this.voiceStore.getAllVoiceStates?.() ?? {})) {
-            const members = Object.values(states ?? {}).filter(state => state?.userId && this.user(state.userId));
+        for (const [channelId, members] of byChannel) {
             if (!members.some(state => state.userId !== me && tracked.has(state.userId))) continue;
             const channel = this.channel(channelId);
-            if (!channel) continue;
+            if (!channel || !this.canView(channel)) continue;
             const info = this.roomDescription(channel);
-            result.push({ channelId, ...info, members: members.map(state => ({
+            result.push({ channelId, ...info, blocker: this.joinBlocker(channel), members: members.map(state => ({
                 id: state.userId, name: this.name(state.userId, info.guildId),
                 friend: friendIds.has(state.userId), watched: watchlist.includes(state.userId),
                 mute: !!(state.mute || state.selfMute), deaf: !!(state.deaf || state.selfDeaf), stream: !!state.selfStream
