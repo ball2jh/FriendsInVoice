@@ -52,7 +52,7 @@ Let a friend you trust mute, deafen, or disconnect **your** account while you're
 
 Change or remove access any time from the same menu (**Personal Guard settings…**). An updated invite replaces the old one, and their client takes it over automatically. Removing someone takes effect on your side immediately.
 
-In the chat, each Personal Guards message is one readable line with its data hidden in a collapsed spoiler. The invite shows the allowed actions and your public key. Commands are encrypted with ECDH and AES-GCM, and your private key stays in local, non-extractable browser storage. Before acting, your client checks the Discord sender, the current invite, freshness, replays and that you share a voice channel. Keys are per Discord installation, so after moving to a new device send a new invite.
+In the chat, each Personal Guards message is a single short line (a link whose hidden part carries the data; clicking it opens this project's page). The invite shows the allowed actions and your public key. Commands are encrypted with ECDH and AES-GCM, and your private key stays in local, non-extractable browser storage. Before acting, your client checks the Discord sender, the current invite, freshness, replays and that you share a voice channel. Keys are per Discord installation, so after moving to a new device send a new invite.
 
 Under **Access others gave you**, click **Remove access** to remove an accepted owner from your local list and its Guard Actions menu. This does not change the owner's own guardian list.
 
