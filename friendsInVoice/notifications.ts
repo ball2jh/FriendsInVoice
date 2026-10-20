@@ -12,7 +12,7 @@ import { ChannelStore, PresenceStore, showToast, UserStore, VoiceStateStore } fr
 import { openPageFor,openPrivateChannel, setPageOpen, settings } from ".";
 import type { UpdateStatus } from "./updateTypes";
 import { isNewer } from "./updateVersion";
-import { describeChannel, displayName, visibleChannelId } from "./voiceContent";
+import { describeChannel, displayName } from "./voiceContent";
 const StatusSettings = getUserSettingLazy<string>("status", "status")!;
 const VERSION = "1.11.6";
 const REPO = "mPhpMaster/FriendsInVoice";// ---------- lists ----------
@@ -28,7 +28,7 @@ export function toggleInList(key: ListKey, id: string) {
     const list = settings.store[key];
     settings.store[key] = list.includes(id) ? list.filter(x => x !== id) : [...list, id];
     if (key === "notifyOnline" || key === "blacklist") lastStatus.set(id, PresenceStore.getStatus(id));
-    if (key === "notifyVoice") lastVoiceChannel.set(id, visibleChannelId(VoiceStateStore.getVoiceStateForUser(id)?.channelId));
+    if (key === "notifyVoice") lastVoiceChannel.set(id, VoiceStateStore.getVoiceStateForUser(id)?.channelId ?? null);
 }
 
 // ---------- voice join notifications ----------
@@ -38,7 +38,7 @@ const lastVoiceChannel = new Map<string, string | null>();
 export function seedVoiceChannels() {
     lastVoiceChannel.clear();
     for (const id of settings.store.notifyVoice) {
-        lastVoiceChannel.set(id, visibleChannelId(VoiceStateStore.getVoiceStateForUser(id)?.channelId));
+        lastVoiceChannel.set(id, VoiceStateStore.getVoiceStateForUser(id)?.channelId ?? null);
     }
 }
 
@@ -63,7 +63,7 @@ export function onVoiceStateUpdates(voiceStates: { userId: string; channelId?: s
     for (const s of voiceStates) {
         if (!list.includes(s.userId)) continue;
 
-        const now = visibleChannelId(s.channelId);
+        const now = s.channelId ?? null;
         const prev = lastVoiceChannel.get(s.userId);
         lastVoiceChannel.set(s.userId, now);
 

@@ -45,12 +45,19 @@ export function displayName(user: User, guildId: string | null) {
         ?? user.username;
 }
 
+// Discord sends channels you can't view with the name "___hidden___" and the CHANNEL_OBFUSCATED flag:
+// https://docs.discord.com/developers/change-log (August 12, 2026)
+const CHANNEL_OBFUSCATED = 1 << 17;
+function isObfuscated(channel: Channel) {
+    return channel.name === "___hidden___" || ((channel as any).flags & CHANNEL_OBFUSCATED) !== 0;
+}
+
 export function describeChannel(channel: Channel) {
     const guild = channel.guild_id ? GuildStore.getGuild(channel.guild_id) : null;
     if (guild) {
         return {
             place: guild.name,
-            roomName: channel.name,
+            roomName: isObfuscated(channel) ? "Private channel" : channel.name,
             icon: guild.icon ? `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=64` : null
         };
     }
@@ -118,7 +125,7 @@ function collect(watchlist: string[], extra: string | null) {
         if (!states.some(s => s.userId !== myId && tracked(s.userId))) continue;
 
         const channel = ChannelStore.getChannel(channelId);
-        if (!channel || !canView(channel)) continue;
+        if (!channel) continue;
 
         const room = buildRoom(channel, states, friendIds, watched, myId);
         allRooms.push(room);
@@ -140,19 +147,6 @@ export function useVoiceData(extra: string | null = null) {
     const myChannel = useStateFromStores([SelectedChannelStore], () => SelectedChannelStore.getVoiceChannelId());
     const data = useMemo(() => collect(watchlist, extra), [voiceVersion, relVersion, watchlist, extra]);
     return { ...data, watchlist, myChannel };
-}
-
-// Discord hides channels you can't view, and is starting to send them obfuscated as "___hidden___", so skip them:
-// https://docs.discord.com/developers/topics/permissions#implicit-permissions
-// https://docs.discord.com/developers/change-log (August 12, 2026)
-export function canView(channel: Channel) {
-    return !channel.guild_id || PermissionStore.can(PermissionsBits.VIEW_CHANNEL, channel);
-}
-
-/** The channel id if it's a channel this user can view, otherwise null */
-export function visibleChannelId(channelId: string | null | undefined) {
-    const channel = channelId ? ChannelStore.getChannel(channelId) : null;
-    return channel && canView(channel) ? channel.id : null;
 }
 
 function canJoin(channel: Channel) {

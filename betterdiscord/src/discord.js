@@ -2,6 +2,10 @@
 const VIEW_CHANNEL = 1n << 10n;
 const CONNECT = 1n << 20n;
 const MOVE_MEMBERS = 1n << 24n;
+const CHANNEL_OBFUSCATED = 1 << 17;
+const STATUSES = ["online", "idle", "dnd", "invisible"];
+// Discord exports these under minified names (the dispatcher is "h"), which BdApi only checks with searchExports
+const IN_EXPORTS = { searchExports: true };
 
 export class DiscordBridge {
     constructor(api) {
@@ -18,18 +22,11 @@ export class DiscordBridge {
         this.selectedChannelStore = webpack.getStore("SelectedChannelStore");
         this.messageStore = webpack.getStore("MessageStore");
         this.mediaStore = webpack.getStore("MediaEngineStore");
-        this.dispatcher = webpack.getByKeys("subscribe", "unsubscribe", "dispatch");
+        this.dispatcher = webpack.getByKeys("subscribe", "unsubscribe", "dispatch", IN_EXPORTS);
         this.channelActions = webpack.getByKeys("openPrivateChannel");
-        this.componentDispatch = webpack.getByKeys("dispatchToLastSubscribed");
+        this.componentDispatch = webpack.getByKeys("dispatchToLastSubscribed", IN_EXPORTS);
         this.voiceActions = webpack.getByKeys("toggleSelfMute", "toggleSelfDeaf");
         this.voiceChannelActions = webpack.getByKeys("selectVoiceChannel", "selectChannel");
-        const settingModule = webpack.getModule?.(module => {
-            try { return Object.values(module).some(item => item?.userSettingsAPIGroup === "status" && item?.userSettingsAPIName === "status"); }
-            catch { return false; }
-        });
-        this.statusSetting = settingModule && Object.values(settingModule).find(item =>
-            item?.userSettingsAPIGroup === "status" && item?.userSettingsAPIName === "status");
-        this.statusActions = webpack.getByKeys("setStatus");
         this.profileActions = webpack.getByKeys("openUserProfileModal");
         if (!this.userStore || !this.channelStore || !this.voiceStore || !this.relationshipStore || !this.permissionStore || !this.dispatcher)
             throw new Error("Discord stores or dispatcher are unavailable in this client build.");
@@ -48,13 +45,6 @@ export class DiscordBridge {
     status(id) { return this.presenceStore?.getStatus?.(id) ?? "offline"; }
     voiceState(id) { return this.voiceStore.getVoiceStateForUser?.(id) ?? null; }
     voiceChannel(id) { return this.voiceState(id)?.channelId ?? null; }
-    // Discord hides channels you can't view, and is starting to send them obfuscated as "___hidden___":
-    // https://docs.discord.com/developers/topics/permissions#implicit-permissions
-    canView(channel) { return !channel.guild_id || !!this.permissionStore.can(VIEW_CHANNEL, channel); }
-    visibleVoiceChannel(id) {
-        const channel = this.channel(this.voiceChannel(id));
-        return channel && this.canView(channel) ? channel.id : null;
-    }
     // "Locked" without Connect; "Full" at the user limit unless you have Move Members:
     // https://docs.discord.com/developers/topics/voice-connections
     joinBlocker(channel) {
@@ -64,9 +54,11 @@ export class DiscordBridge {
         if (!limit || this.permissionStore.can(MOVE_MEMBERS, channel)) return null;
         return Object.keys(this.voiceStore.getVoiceStatesForChannel?.(channel.id) ?? {}).length >= limit ? "Full" : null;
     }
+    // the voice channel this client is in; voiceChannel(me) can return a session on another device
+    myVoiceChannel() { return this.selectedChannelStore?.getVoiceChannelId?.() ?? null; }
     sharesVoice(id) {
-        const mine = this.voiceChannel(this.currentId());
-        return !!mine && mine === this.voiceChannel(id);
+        const mine = this.myVoiceChannel();
+        return !!mine && !!this.voiceStore.getVoiceStatesForChannel?.(mine)?.[id];
     }
     isDm(channel) { return !!channel?.isDM?.(); }
     channel(id) { return this.channelStore.getChannel(id); }
@@ -109,7 +101,8 @@ export class DiscordBridge {
     }
     roomDescription(channel) {
         const guild = channel.guild_id && this.guildStore?.getGuild?.(channel.guild_id);
-        if (guild) return { place: guild.name, roomName: channel.name ?? "Voice", guildId: guild.id };
+        // Discord sends channels you can't view as "___hidden___" with the CHANNEL_OBFUSCATED flag (1 << 17)
+        if (guild) return { place: guild.name, roomName: channel.name === "___hidden___" || (channel.flags & CHANNEL_OBFUSCATED) ? "Private channel" : channel.name ?? "Voice", guildId: guild.id };
         if (this.isDm(channel)) return { place: "Direct call", roomName: this.name(channel.recipients?.[0]), guildId: null };
         return { place: "Group call", roomName: channel.name ?? "Group DM", guildId: null };
     }
@@ -129,7 +122,7 @@ export class DiscordBridge {
         for (const [channelId, members] of byChannel) {
             if (!members.some(state => state.userId !== me && tracked.has(state.userId))) continue;
             const channel = this.channel(channelId);
-            if (!channel || !this.canView(channel)) continue;
+            if (!channel) continue;
             const info = this.roomDescription(channel);
             result.push({ channelId, ...info, blocker: this.joinBlocker(channel), members: members.map(state => ({
                 id: state.userId, name: this.name(state.userId, info.guildId),
@@ -141,7 +134,7 @@ export class DiscordBridge {
     }
     applyGuardAction(action) {
         if (action === "disconnect") {
-            const previous = this.voiceChannel(this.currentId());
+            const previous = this.myVoiceChannel();
             if (!previous || !this.voiceChannelActions?.selectVoiceChannel) return null;
             this.voiceChannelActions.selectVoiceChannel(null);
             return () => this.voiceChannelActions.selectVoiceChannel(previous);
@@ -157,8 +150,11 @@ export class DiscordBridge {
         return null;
     }
     async setInvisible() {
+        // Discord's status user setting is the one exported setting whose value is a status
+        this.statusSetting ??= this.api.Webpack.getModule?.(item => {
+            try { return typeof item?.updateSetting === "function" && STATUSES.includes(item.getSetting?.()); } catch { return false; }
+        }, IN_EXPORTS);
         if (this.statusSetting?.updateSetting) return this.statusSetting.updateSetting("invisible");
-        if (this.statusActions?.setStatus) return this.statusActions.setStatus("invisible");
         throw new Error("Discord's status control is unavailable in this build.");
     }
 }

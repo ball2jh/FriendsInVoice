@@ -15,7 +15,7 @@ import { definePluginSettings } from "@api/Settings";
 import ErrorBoundary from "@components/ErrorBoundary";
 import { classNameFactory } from "@utils/css";
 import definePlugin, { OptionType } from "@utils/types";
-import { ChannelActionCreators, ChannelStore, ContextMenuApi, Menu, PermissionStore, PresenceStore, React, ReactDOM, RelationshipStore, SelectedChannelStore, SelectedGuildStore, Tooltip, useEffect, useReducer, UserStore, useState, useStateFromStores, VoiceStateStore } from "@webpack/common";
+import { ChannelActionCreators, ChannelStore, ContextMenuApi, Menu, PresenceStore, React, ReactDOM, RelationshipStore, SelectedChannelStore, SelectedGuildStore, Tooltip, useEffect, useReducer, UserStore, useState, useStateFromStores, VoiceStateStore } from "@webpack/common";
 
 import { checkForUpdate, onPresenceChange, onVoiceStateUpdates, seedStatuses, seedVoiceChannels, startQuietPeriod, startUpdateTimer, stopUpdateTimer } from "./notifications";
 import { GuardNotificationHost } from "./personalGuardsNotice";
@@ -24,7 +24,7 @@ import { clearGuardRuntime, handleGuardMessage } from "./personalGuardsRuntime";
 import { PersonalGuardsTab } from "./personalGuardsTab";
 import { SmartReplies } from "./smartReplies";
 import { UserContextPatch } from "./userContextMenu";
-import { useVoiceData, visibleChannelId } from "./voiceContent";
+import { useVoiceData } from "./voiceContent";
 import { AlertsTab, MyListTab, RunAwayTab, VoiceTab, WatchedCard } from "./voiceTabs";
 
 export { inList, isOnline, toggleInList } from "./notifications";
@@ -155,18 +155,16 @@ function getNav() {
     return document.querySelector<HTMLElement>(`.${cl("server-button")}`)?.closest("nav") ?? null;
 }
 
-// Discord's user panel (name, mute, deafen, voice connection) sits at the bottom-left, across the server list
-function getUserPanel() {
-    return document.querySelector<HTMLElement>('section[class^="panels_"], section[class*=" panels_"]');
+// Discord's sidebar: the server list, the channel / friends list and the user panel under them
+function getSidebar() {
+    return document.querySelector<HTMLElement>('section[class^="panels_"], section[class*=" panels_"]')?.parentElement ?? null;
 }
 
+// the main area right of the sidebar, where Discord shows the chat or its own pages (Friends, Shop, …)
 function getContentRect() {
-    const r = getNav()?.getBoundingClientRect();
-    const panel = getUserPanel()?.getBoundingClientRect();
-    const left = r?.right ?? 72;
-    // stop above the user panel when it reaches into the page, so its controls stay usable
-    const bottom = panel && panel.right > left ? Math.max(0, window.innerHeight - panel.top + 8) : 0;
-    return { left, top: r?.top ?? 0, bottom };
+    const sidebar = getSidebar()?.getBoundingClientRect();
+    const nav = getNav()?.getBoundingClientRect();
+    return { left: sidebar?.right ?? nav?.right ?? 72, top: sidebar?.top ?? nav?.top ?? 0 };
 }
 
 function Spotlight({ id, data }: { id: string; data: ReturnType<typeof useVoiceData>; }) {
@@ -223,10 +221,10 @@ function FriendsInVoicePage() {
             if (!(e.target as Element | null)?.closest(`.${cl("server-button")}`)) setPageOpen(false);
         };
 
-        // the user panel grows when you join voice
-        const panel = getUserPanel();
-        const panelObserver = new ResizeObserver(onResize);
-        if (panel) panelObserver.observe(panel);
+        // follow the sidebar when its divider is dragged
+        const sidebar = getSidebar();
+        const sidebarObserver = new ResizeObserver(onResize);
+        if (sidebar) sidebarObserver.observe(sidebar);
 
         window.addEventListener("keydown", onKey);
         window.addEventListener("resize", onResize);
@@ -235,7 +233,7 @@ function FriendsInVoicePage() {
             window.removeEventListener("keydown", onKey);
             window.removeEventListener("resize", onResize);
             nav?.removeEventListener("click", onNavClick, true);
-            panelObserver.disconnect();
+            sidebarObserver.disconnect();
         };
     }, []);
 
@@ -243,7 +241,7 @@ function FriendsInVoicePage() {
     const watchedInVoice = data.watchlist.filter(id => data.roomByUser.has(id)).length;
 
     return (
-        <div className={cl("page")} style={{ left: rect.left, top: rect.top, bottom: rect.bottom }}>
+        <div className={cl("page")} style={{ left: rect.left, top: rect.top }}>
             <div className={cl("page-header")}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d={HEADSET_PATH} /></svg>
                 <div className={cl("page-title")}>Friends in Voice</div>
@@ -293,10 +291,10 @@ const HEADSET_PATH = "M12 2a10 10 0 0 0-10 10v5a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-6
 function ServerListButton() {
     const open = usePageOpen();
 
-    const count = useStateFromStores([VoiceStateStore, RelationshipStore, PermissionStore], () => {
+    const count = useStateFromStores([VoiceStateStore, RelationshipStore], () => {
         let n = 0;
         for (const id of RelationshipStore.getFriendIDs()) {
-            if (visibleChannelId(VoiceStateStore.getVoiceStateForUser(id)?.channelId)) n++;
+            if (VoiceStateStore.getVoiceStateForUser(id)?.channelId) n++;
         }
         return n;
     });

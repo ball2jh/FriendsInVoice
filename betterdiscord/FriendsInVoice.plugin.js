@@ -37,7 +37,7 @@ var AlertService = class {
     const settings = this.data.value;
     for (const id of /* @__PURE__ */ new Set([...settings.notifyOnline, ...settings.blacklist]))
       this.previousStatus.set(id, this.bridge.status(id));
-    for (const id of settings.notifyVoice) this.previousVoice.set(id, this.bridge.visibleVoiceChannel(id));
+    for (const id of settings.notifyVoice) this.previousVoice.set(id, this.bridge.voiceChannel(id));
   }
   reconnect() {
     this.quietUntil = Date.now() + 15e3;
@@ -63,7 +63,7 @@ var AlertService = class {
       }
     }
     for (const id of settings.notifyVoice) {
-      const now = this.bridge.visibleVoiceChannel(id);
+      const now = this.bridge.voiceChannel(id);
       const before = this.previousVoice.get(id);
       this.previousVoice.set(id, now);
       if (Date.now() < this.quietUntil || before === void 0 || before || !now) continue;
@@ -180,6 +180,9 @@ var DataStore = class {
 var VIEW_CHANNEL = 1n << 10n;
 var CONNECT = 1n << 20n;
 var MOVE_MEMBERS = 1n << 24n;
+var CHANNEL_OBFUSCATED = 1 << 17;
+var STATUSES = ["online", "idle", "dnd", "invisible"];
+var IN_EXPORTS = { searchExports: true };
 var DiscordBridge = class {
   constructor(api) {
     this.api = api;
@@ -195,20 +198,11 @@ var DiscordBridge = class {
     this.selectedChannelStore = webpack.getStore("SelectedChannelStore");
     this.messageStore = webpack.getStore("MessageStore");
     this.mediaStore = webpack.getStore("MediaEngineStore");
-    this.dispatcher = webpack.getByKeys("subscribe", "unsubscribe", "dispatch");
+    this.dispatcher = webpack.getByKeys("subscribe", "unsubscribe", "dispatch", IN_EXPORTS);
     this.channelActions = webpack.getByKeys("openPrivateChannel");
-    this.componentDispatch = webpack.getByKeys("dispatchToLastSubscribed");
+    this.componentDispatch = webpack.getByKeys("dispatchToLastSubscribed", IN_EXPORTS);
     this.voiceActions = webpack.getByKeys("toggleSelfMute", "toggleSelfDeaf");
     this.voiceChannelActions = webpack.getByKeys("selectVoiceChannel", "selectChannel");
-    const settingModule = webpack.getModule?.((module2) => {
-      try {
-        return Object.values(module2).some((item) => item?.userSettingsAPIGroup === "status" && item?.userSettingsAPIName === "status");
-      } catch {
-        return false;
-      }
-    });
-    this.statusSetting = settingModule && Object.values(settingModule).find((item) => item?.userSettingsAPIGroup === "status" && item?.userSettingsAPIName === "status");
-    this.statusActions = webpack.getByKeys("setStatus");
     this.profileActions = webpack.getByKeys("openUserProfileModal");
     if (!this.userStore || !this.channelStore || !this.voiceStore || !this.relationshipStore || !this.permissionStore || !this.dispatcher)
       throw new Error("Discord stores or dispatcher are unavailable in this client build.");
@@ -236,15 +230,6 @@ var DiscordBridge = class {
   voiceChannel(id) {
     return this.voiceState(id)?.channelId ?? null;
   }
-  // Discord hides channels you can't view, and is starting to send them obfuscated as "___hidden___":
-  // https://docs.discord.com/developers/topics/permissions#implicit-permissions
-  canView(channel) {
-    return !channel.guild_id || !!this.permissionStore.can(VIEW_CHANNEL, channel);
-  }
-  visibleVoiceChannel(id) {
-    const channel = this.channel(this.voiceChannel(id));
-    return channel && this.canView(channel) ? channel.id : null;
-  }
   // "Locked" without Connect; "Full" at the user limit unless you have Move Members:
   // https://docs.discord.com/developers/topics/voice-connections
   joinBlocker(channel) {
@@ -254,9 +239,13 @@ var DiscordBridge = class {
     if (!limit || this.permissionStore.can(MOVE_MEMBERS, channel)) return null;
     return Object.keys(this.voiceStore.getVoiceStatesForChannel?.(channel.id) ?? {}).length >= limit ? "Full" : null;
   }
+  // the voice channel this client is in; voiceChannel(me) can return a session on another device
+  myVoiceChannel() {
+    return this.selectedChannelStore?.getVoiceChannelId?.() ?? null;
+  }
   sharesVoice(id) {
-    const mine = this.voiceChannel(this.currentId());
-    return !!mine && mine === this.voiceChannel(id);
+    const mine = this.myVoiceChannel();
+    return !!mine && !!this.voiceStore.getVoiceStatesForChannel?.(mine)?.[id];
   }
   isDm(channel) {
     return !!channel?.isDM?.();
@@ -304,7 +293,7 @@ var DiscordBridge = class {
   }
   roomDescription(channel) {
     const guild = channel.guild_id && this.guildStore?.getGuild?.(channel.guild_id);
-    if (guild) return { place: guild.name, roomName: channel.name ?? "Voice", guildId: guild.id };
+    if (guild) return { place: guild.name, roomName: channel.name === "___hidden___" || channel.flags & CHANNEL_OBFUSCATED ? "Private channel" : channel.name ?? "Voice", guildId: guild.id };
     if (this.isDm(channel)) return { place: "Direct call", roomName: this.name(channel.recipients?.[0]), guildId: null };
     return { place: "Group call", roomName: channel.name ?? "Group DM", guildId: null };
   }
@@ -323,7 +312,7 @@ var DiscordBridge = class {
     for (const [channelId, members] of byChannel) {
       if (!members.some((state) => state.userId !== me && tracked.has(state.userId))) continue;
       const channel = this.channel(channelId);
-      if (!channel || !this.canView(channel)) continue;
+      if (!channel) continue;
       const info = this.roomDescription(channel);
       result.push({ channelId, ...info, blocker: this.joinBlocker(channel), members: members.map((state) => ({
         id: state.userId,
@@ -339,7 +328,7 @@ var DiscordBridge = class {
   }
   applyGuardAction(action) {
     if (action === "disconnect") {
-      const previous = this.voiceChannel(this.currentId());
+      const previous = this.myVoiceChannel();
       if (!previous || !this.voiceChannelActions?.selectVoiceChannel) return null;
       this.voiceChannelActions.selectVoiceChannel(null);
       return () => this.voiceChannelActions.selectVoiceChannel(previous);
@@ -357,8 +346,14 @@ var DiscordBridge = class {
     return null;
   }
   async setInvisible() {
+    this.statusSetting ??= this.api.Webpack.getModule?.((item) => {
+      try {
+        return typeof item?.updateSetting === "function" && STATUSES.includes(item.getSetting?.());
+      } catch {
+        return false;
+      }
+    }, IN_EXPORTS);
     if (this.statusSetting?.updateSetting) return this.statusSetting.updateSetting("invisible");
-    if (this.statusActions?.setStatus) return this.statusActions.setStatus("invisible");
     throw new Error("Discord's status control is unavailable in this build.");
   }
 };
@@ -376,8 +371,15 @@ var BASE64_URL = /^[A-Za-z0-9_-]+$/;
 function isUserId(value) {
   return SNOWFLAKE.test(value);
 }
-function makeCommand(ownerId, action) {
-  return { kind: "command", ownerId, action, createdAt: Date.now(), nonce: crypto.randomUUID() };
+function newGuardNonce() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = bytes[6] & 15 | 64;
+  bytes[8] = bytes[8] & 63 | 128;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+function makeCommand(ownerId, action, inviteNonce) {
+  return { kind: "command", ownerId, action, createdAt: Date.now(), nonce: newGuardNonce(), ...inviteNonce ? { inviteNonce } : {} };
 }
 function makeGrantNotice(ownerId, actions) {
   return { kind: "grant", ownerId, actions: GUARD_ACTIONS.filter((action) => actions.includes(action)), createdAt: Date.now() };
@@ -395,9 +397,13 @@ function parseGuardMessage(content) {
   }
   if (!data || typeof data !== "object") return null;
   const value = data;
-  if (value.version !== 2) return null;
-  if (value.type === "key" && typeof value.publicKey === "string" && value.publicKey.length === 87 && BASE64_URL.test(value.publicKey)) return value;
-  if (value.type === "sealed" && typeof value.to === "string" && isUserId(value.to) && typeof value.fromKey === "string" && value.fromKey.length === 87 && BASE64_URL.test(value.fromKey) && typeof value.iv === "string" && value.iv.length === 16 && BASE64_URL.test(value.iv) && typeof value.ciphertext === "string" && value.ciphertext.length > 20 && BASE64_URL.test(value.ciphertext)) {
+  for (const field of ["publicKey", "fromKey", "iv", "ciphertext"]) {
+    if (typeof value[field] === "string") value[field] = value[field].replace(/[ \t\r\n]/g, "");
+  }
+  if (value.version !== 2 && value.version !== 3) return null;
+  if (value.type === "key" && value.version === 2 && typeof value.publicKey === "string" && value.publicKey.length === 87 && BASE64_URL.test(value.publicKey)) return value;
+  if (value.type === "invite" && value.version === 3 && typeof value.publicKey === "string" && value.publicKey.length === 87 && BASE64_URL.test(value.publicKey) && typeof value.nonce === "string" && /^[a-f\d-]{36}$/i.test(value.nonce) && Array.isArray(value.actions) && value.actions.length > 0 && value.actions.every((action) => GUARD_ACTIONS.includes(action))) return value;
+  if (value.type === "sealed" && value.version === 2 && typeof value.to === "string" && isUserId(value.to) && typeof value.fromKey === "string" && value.fromKey.length === 87 && BASE64_URL.test(value.fromKey) && typeof value.iv === "string" && value.iv.length === 16 && BASE64_URL.test(value.iv) && typeof value.ciphertext === "string" && value.ciphertext.length > 20 && BASE64_URL.test(value.ciphertext)) {
     return value;
   }
   return null;
@@ -406,7 +412,8 @@ function parseGuardPayload(value) {
   if (!value || typeof value !== "object") return null;
   const payload = value;
   if (typeof payload.ownerId !== "string" || !isUserId(payload.ownerId) || typeof payload.createdAt !== "number" || !Number.isSafeInteger(payload.createdAt)) return null;
-  if (payload.kind === "command" && GUARD_ACTIONS.includes(payload.action) && typeof payload.nonce === "string" && /^[a-f\d-]{36}$/i.test(payload.nonce)) return payload;
+  if (payload.kind === "command" && GUARD_ACTIONS.includes(payload.action) && typeof payload.nonce === "string" && /^[a-f\d-]{36}$/i.test(payload.nonce) && (payload.inviteNonce === void 0 || typeof payload.inviteNonce === "string" && /^[a-f\d-]{36}$/i.test(payload.inviteNonce)))
+    return payload;
   if (payload.kind === "grant" && Array.isArray(payload.actions) && payload.actions.every((action) => GUARD_ACTIONS.includes(action))) return payload;
   return null;
 }
@@ -1559,18 +1566,15 @@ var STYLE = `
 `;
 
 // ../friendsInVoice/personalGuardsOnboarding.ts
-function ownerSetupStep(actions, hasKey) {
-  if (!actions.length) return "choose";
-  return hasKey ? "send-access" : "wait-key";
+function ownerSetupStep(actions) {
+  return actions.length ? "invite" : "choose";
 }
 function ownerSetupMessage(step) {
   switch (step) {
     case "choose":
       return "Choose the actions this person may use on your account.";
-    case "wait-key":
-      return "Ask them to right-click your Discord profile \u2192 Personal Guards \u2192 Offer to guard. They must press Send in the DM.";
-    case "send-access":
-      return "Their public key is ready. Prepare the encrypted access DM, then press Discord's Send button.";
+    case "invite":
+      return "Invite this guardian, then press Discord's Send button in the DM. They accept without sending a reply.";
   }
 }
 

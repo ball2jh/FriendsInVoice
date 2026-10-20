@@ -22,7 +22,7 @@ Every voice room that has at least one of your **friends** in it, laid out side 
 - **"Here because of:"**: the friends that put this room on the list, so you instantly know why it's there,
 - everyone in the room, with `FRIEND` / `MY LIST` / `LIVE` tags and muted/deafened icons,
 - a `SHOWS OFFLINE` tag on friends who are in the room even though their status says offline,
-- a **Join** button (shows `Joined` if you're already there, `Locked` if you lack permission, `Full` if the room is at its user limit),
+- a **Join** button (shows `Joined` if you're already there, `Locked` if you lack permission, `Full` if the room is at its user limit; rooms in channels you can't open show as *Private channel*),
 - search across people, servers and rooms.
 
 ### ⭐ My list
@@ -139,7 +139,6 @@ Copy the `friendsInVoice` folder into `Vencord/src/userplugins/`, then run `pnpm
 ## Notes & limitations
 
 - **Discord only sends voice activity and online status for servers you are also a member of** (and calls you can see). A friend in a voice room on a server you haven't joined can't be shown, and alerts only work for people Discord shares this information about. This is a Discord limitation, not something a plugin can bypass.
-- Rooms in channels you can't view are not shown, and joining them doesn't trigger a voice alert, just like Discord hides those channels.
 - There's no way to be in a voice room without the other people seeing you; everyone connected always appears in the room's member list.
 - Alerts only fire while Discord is open. Right after Discord starts or reconnects, the plugin waits a few seconds so it doesn't notify you about everyone who was already online or in voice.
 - The page is drawn on top of Discord's main area (Discord has no API for adding new pages).

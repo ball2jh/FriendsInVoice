@@ -44,11 +44,13 @@ test("rooms are grouped by each voice state's channel, not by the guild key", ()
     assert.equal(rooms[0].blocker, null);
 });
 
-test("rooms and voice alerts skip channels the user can't view", () => {
+test("rooms in channels the user can't view are shown as a locked private channel", () => {
     const { bridge: b, voiceStates } = bridge({ canView: channel => channel.id !== hidden });
     voiceStates[guild][friend].channelId = hidden;
-    assert.deepEqual(b.rooms([]), []);
-    assert.equal(b.visibleVoiceChannel(friend), null);
+    const [room] = b.rooms([]);
+    assert.equal(room.roomName, "Private channel");
+    assert.equal(room.blocker, "Locked");
+    assert.equal(b.voiceChannel(friend), hidden);
 });
 
 test("a room at its user limit is Full unless the user has Move Members", () => {
