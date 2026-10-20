@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { openGuardPayload, publicKeyString, sealGuardPayload, validatePublicKey } from "../friendsInVoice/personalGuardsCrypto";
-import { makeCommand, makeGrantNotice, parseGuardMessage, serializeWire } from "../friendsInVoice/personalGuardsProtocol";
+import { makeCommand, makeGrantNotice, newGuardNonce, parseGuardMessage, serializeWire } from "../friendsInVoice/personalGuardsProtocol";
 
 const ownerId = "123456789012345678";
 const guardianId = "234567890123456789";
@@ -48,7 +48,8 @@ test("old plain-text and malformed messages are rejected", () => {
 test("owner invitation carries the allowed actions and binds later encrypted commands", async () => {
     const owner = await pair();
     const guardian = await pair();
-    const nonce = crypto.randomUUID();
+    const nonce = newGuardNonce();
+    assert.match(nonce, /^[a-f\d]{8}-[a-f\d]{4}-4[a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12}$/);
     const invite = serializeWire({ type: "invite", version: 3, publicKey: await publicKeyString(owner), actions: ["mute"], nonce });
     assert.equal(parseGuardMessage(invite)?.type, "invite");
     const command = makeCommand(ownerId, "mute", nonce);

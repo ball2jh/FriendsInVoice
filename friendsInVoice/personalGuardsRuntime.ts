@@ -11,7 +11,7 @@ import { ChannelActionCreators, ChannelStore, GuildMemberStore, GuildStore, Medi
 
 import { openGuardsPage } from ".";
 import { getGuardKeys, openGuardPayload, publicKeyString, sealGuardPayload, validatePublicKey } from "./personalGuardsCrypto";
-import { GUARD_ACTIONS, GUARD_LABELS, makeCommand, makeGrantNotice, parseGuardMessage, serializeWire } from "./personalGuardsProtocol";
+import { GUARD_ACTIONS, GUARD_LABELS, makeCommand, makeGrantNotice, newGuardNonce, parseGuardMessage, serializeWire } from "./personalGuardsProtocol";
 import type { GuardAction, GuardGrant } from "./personalGuardsTypes";
 
 export interface GuardsStore {
@@ -91,14 +91,21 @@ export function revokeGuard(store: GuardsStore, userId: string) {
 export async function sendGuardInvite(store: GuardsStore, guardianId: string) {
     const actions = getGrant(store, guardianId);
     if (!actions.length) { sendError("Choose at least one action before inviting this guardian."); return; }
+    let stage = "creating an invitation";
     try {
-        const nonce = crypto.randomUUID();
+        const nonce = newGuardNonce();
+        stage = "loading your secure key";
         const publicKey = await publicKeyString(await getGuardKeys());
+        stage = "opening the guardian's DM";
         const text = serializeWire({ type: "invite", version: 3, publicKey, actions, nonce });
         if (!await openDraft(guardianId, text)) return;
+        stage = "saving the invitation";
         store.personalGuards = store.personalGuards.map(grant => grant.userId === guardianId ? { ...grant, inviteNonce: nonce } : grant);
         showNotification({ title: "Personal Guards", body: "Invitation ready. Press Discord's Send button. The guardian can then accept it without sending a reply." });
-    } catch { sendError("Could not prepare the invitation. Nothing was sent."); }
+    } catch (error) {
+        const detail = error instanceof Error ? error.message.slice(0, 120) : "Unexpected error";
+        sendError(`Invitation failed while ${stage}: ${detail}`);
+    }
 }
 
 export function acceptGuardInvite(store: GuardsStore, ownerId: string) {
