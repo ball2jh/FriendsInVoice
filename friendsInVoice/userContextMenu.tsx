@@ -10,7 +10,7 @@ import { Menu, UserStore } from "@webpack/common";
 
 import { inList, openGuardsPage, selfMenuItems, settings, toggleInList } from ".";
 import { GUARD_ACTIONS, GUARD_LABELS } from "./personalGuardsProtocol";
-import { hasGuardKey, sendGuardCommand, sendGuardKey, setGrant, sharesVoice } from "./personalGuardsRuntime";
+import { hasGuardKey, sendGuardCommand, setGrant, sharesVoice } from "./personalGuardsRuntime";
 
 export const UserContextPatch: NavContextMenuPatchCallback = (children, { user }: { user?: User; }) => {
     if (!user) return;
@@ -42,7 +42,6 @@ export const UserContextPatch: NavContextMenuPatchCallback = (children, { user }
                     if (!settings.store.personalGuards.some(grant => grant.userId === user.id)) setGrant(settings.store, user.id, []);
                     openGuardsPage();
                 }} />
-            <Menu.MenuItem id="vc-fiv-send-key" label="Offer to guard (prepare secure key DM)" action={() => void sendGuardKey(user.id)} />
             {actions.length > 0 && <Menu.MenuItem id="vc-fiv-guard-actions" label="Guard Actions">
                 {actions.map(action => <Menu.MenuItem key={action} id={`vc-fiv-guard-${action}`} label={`Send ${GUARD_LABELS[action]}`}
                     action={() => void sendGuardCommand(settings.store, user.id, action)} />)}

@@ -9,6 +9,7 @@ export type GuardAction = "mute" | "deafen" | "disconnect";
 export interface GuardGrant {
     userId: string;
     actions: GuardAction[];
+    inviteNonce?: string;
 }
 
 export interface GuardCommand {
@@ -16,6 +17,15 @@ export interface GuardCommand {
     ownerId: string;
     action: GuardAction;
     createdAt: number;
+    nonce: string;
+    inviteNonce?: string;
+}
+
+export interface GuardInviteWire {
+    type: "invite";
+    version: 3;
+    publicKey: string;
+    actions: GuardAction[];
     nonce: string;
 }
 
@@ -41,4 +51,4 @@ export interface GuardSealedWire {
     ciphertext: string;
 }
 
-export type GuardWire = GuardKeyWire | GuardSealedWire;
+export type GuardWire = GuardKeyWire | GuardSealedWire | GuardInviteWire;

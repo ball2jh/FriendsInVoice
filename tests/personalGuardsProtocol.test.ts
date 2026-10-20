@@ -24,7 +24,7 @@ test("encrypted command hides the action and decrypts only for the owner", async
     if (decoded?.kind === "command") assert.equal(decoded.action, "mute");
     assert.equal(await openGuardPayload(wire, other, guardianId, ownerId), null);
     assert.equal(await openGuardPayload(wire, owner, ownerId, guardianId), null);
-    assert.equal(await openGuardPayload({ ...wire, ciphertext: wire.ciphertext.slice(0, -1) + "A" }, owner, guardianId, ownerId), null);
+    assert.equal(await openGuardPayload({ ...wire, ciphertext: (wire.ciphertext[0] === "A" ? "B" : "A") + wire.ciphertext.slice(1) }, owner, guardianId, ownerId), null);
 });
 
 test("encrypted grant carries a subset and an empty revocation", async () => {
@@ -43,4 +43,17 @@ test("old plain-text and malformed messages are rejected", () => {
     assert.equal(parseGuardMessage("[FriendsInVoice Guard v1] {\"kind\":\"command\",\"action\":\"mute\"}"), null);
     assert.equal(parseGuardMessage("hello"), null);
     assert.equal(parseGuardMessage("[FriendsInVoice Guard v2] {}"), null);
+});
+
+test("owner invitation carries the allowed actions and binds later encrypted commands", async () => {
+    const owner = await pair();
+    const guardian = await pair();
+    const nonce = crypto.randomUUID();
+    const invite = serializeWire({ type: "invite", version: 3, publicKey: await publicKeyString(owner), actions: ["mute"], nonce });
+    assert.equal(parseGuardMessage(invite)?.type, "invite");
+    const command = makeCommand(ownerId, "mute", nonce);
+    const wire = await sealGuardPayload(command, guardian, await publicKeyString(owner), guardianId, ownerId);
+    const decoded = await openGuardPayload(wire, owner, guardianId, ownerId);
+    assert.equal(decoded?.kind === "command" ? decoded.inviteNonce : null, nonce);
+    assert.equal(parseGuardMessage(invite.replace('"mute"', '"unknown"')), null);
 });

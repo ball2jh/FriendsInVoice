@@ -9,7 +9,7 @@ import { openUserProfileModal, React, UserStore, useState } from "@webpack/commo
 
 import { ownerSetupMessage, ownerSetupStep } from "./personalGuardsOnboarding";
 import { GUARD_ACTIONS, GUARD_LABELS } from "./personalGuardsProtocol";
-import { getGrant, guardDisplayName, type GuardsStore, hasGuardKey, revokeGuard, sendGuardCommand, sendGuardGrant, sendGuardKey, setGrant, sharesVoice } from "./personalGuardsRuntime";
+import { acceptGuardInvite, getGrant, guardDisplayName, type GuardsStore, hasGuardKey, revokeGuard, sendGuardCommand, sendGuardInvite, setGrant, sharesVoice } from "./personalGuardsRuntime";
 import type { GuardAction } from "./personalGuardsTypes";
 
 const cl = classNameFactory("vc-fiv-");
@@ -36,7 +36,7 @@ function matchesGuard(userId: string, search: string): boolean {
 
 function GuardianRow({ userId, store, refresh }: { userId: string; store: GuardsStore; refresh(): void; }) {
     const actions = getGrant(store, userId);
-    const step = ownerSetupStep(actions, hasGuardKey(store, userId));
+    const step = ownerSetupStep(actions);
 
     function update(next: GuardAction[]) {
         setGrant(store, userId, next);
@@ -56,11 +56,10 @@ function GuardianRow({ userId, store, refresh }: { userId: string; store: Guards
                 onChange={() => update(actions.length === GUARD_ACTIONS.length ? [] : GUARD_ACTIONS)} />Select all</label>
         </div>
         <div className={cl("guard-controls")}>
-            <button onClick={() => void sendGuardGrant(store, userId)} disabled={step !== "send-access"}>Prepare access DM</button>
+            <button onClick={() => void sendGuardInvite(store, userId)} disabled={!actions.length}>Invite guardian</button>
             <button className={cl("guard-danger")} onClick={() => {
                 revokeGuard(store, userId);
                 refresh();
-                if (hasGuardKey(store, userId)) void sendGuardGrant(store, userId);
             }}>Revoke and remove</button>
         </div>
     </section>;
@@ -76,7 +75,6 @@ function AccessRow({ ownerId, store }: { ownerId: string; store: GuardsStore; })
         <div className={cl("guard-controls")}>
             {grant.actions.map(action => <button key={action} disabled={!together || !hasGuardKey(store, ownerId)}
                 onClick={() => void sendGuardCommand(store, ownerId, action)}>Send {GUARD_LABELS[action]}</button>)}
-            <button onClick={() => void sendGuardKey(ownerId)}>Renew secure setup</button>
         </div>
         {!together && <small>Join the same voice channel to use guard actions.</small>}
     </section>;
@@ -87,12 +85,13 @@ export function PersonalGuardsTab({ store, refresh }: { store: GuardsStore; refr
     const query = search.trim().toLowerCase();
     const guardians = store.personalGuards.filter(item => matchesGuard(item.userId, query));
     const owners = store.knownGuardGrants.filter(item => matchesGuard(item.userId, query));
+    const pending = store.pendingGuardInvites.filter(item => matchesGuard(item.userId, query));
 
     return <div className={cl("guards-tab")}>
         <div className={cl("guards-intro")}>
             <h2>Personal Guards</h2>
             <p>Choose who can mute, deafen, or disconnect your own account while you share voice.</p>
-            <small>To add someone, right-click their Discord profile → Personal Guards → Add as Guardian. They then choose Offer to guard on your profile and send the prepared DM. When their key arrives, select allowed actions and send one encrypted access DM. Your private key stays on this device; every DM needs you to press Discord's Send button.</small>
+            <small>Right-click a person → Personal Guards → Add as Guardian. Choose their actions, invite them, and press Send in the DM. They accept here without sending a reply. Commands stay encrypted and your private key stays on this device.</small>
         </div>
         <input className={cl("guard-search")} type="search" value={search} onChange={event => setSearch(event.currentTarget.value)}
             placeholder="Search guardians and access" aria-label="Search guardians and access" />
@@ -101,10 +100,20 @@ export function PersonalGuardsTab({ store, refresh }: { store: GuardsStore; refr
             {guardians.map(grant => <GuardianRow key={grant.userId} userId={grant.userId} store={store} refresh={refresh} />)}
         </div>
         {!store.personalGuards.length && <p className={cl("guard-empty")}>No guardians yet. Right-click a person in Discord and choose Personal Guards → Add as Guardian.</p>}
+        {pending.length > 0 && <><h3>Invitations to guard others</h3><div className={cl("guards-grid")}>
+            {pending.map(invite => <section className={cl("guard-card")} key={invite.userId}>
+                <GuardIdentity userId={invite.userId} />
+                <p className={cl("guard-step")}>Allowed: {invite.actions.map(action => GUARD_LABELS[action]).join(", ")}</p>
+                <div className={cl("guard-controls")}>
+                    <button onClick={() => { acceptGuardInvite(store, invite.userId); refresh(); }}>Accept invitation</button>
+                    <button onClick={() => { store.pendingGuardInvites = store.pendingGuardInvites.filter(item => item.userId !== invite.userId); refresh(); }}>Decline</button>
+                </div>
+            </section>)}
+        </div></>}
         <h3>Access others gave you</h3>
         <div className={cl("guards-grid")}>
             {owners.map(grant => <AccessRow key={grant.userId} ownerId={grant.userId} store={store} />)}
         </div>
-        {!store.knownGuardGrants.length && <p className={cl("guard-empty")}>No access yet. Right-click the owner and choose Personal Guards → Offer to guard, then press Send in the DM.</p>}
+        {!store.knownGuardGrants.length && <p className={cl("guard-empty")}>No access yet. Ask the owner to invite you as a guardian, then accept the invitation here.</p>}
     </div>;
 }

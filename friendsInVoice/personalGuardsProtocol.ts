@@ -21,8 +21,8 @@ export function isUserId(value: string): boolean {
     return SNOWFLAKE.test(value);
 }
 
-export function makeCommand(ownerId: string, action: GuardAction): GuardCommand {
-    return { kind: "command", ownerId, action, createdAt: Date.now(), nonce: crypto.randomUUID() };
+export function makeCommand(ownerId: string, action: GuardAction, inviteNonce?: string): GuardCommand {
+    return { kind: "command", ownerId, action, createdAt: Date.now(), nonce: crypto.randomUUID(), ...(inviteNonce ? { inviteNonce } : {}) };
 }
 
 export function makeGrantNotice(ownerId: string, actions: GuardAction[]): GuardNotice {
@@ -39,10 +39,15 @@ export function parseGuardMessage(content: string): GuardWire | null {
     try { data = JSON.parse(content.slice(PREFIX.length)); } catch { return null; }
     if (!data || typeof data !== "object") return null;
     const value = data as Record<string, unknown>;
-    if (value.version !== 2) return null;
-    if (value.type === "key" && typeof value.publicKey === "string" &&
+    if (value.version !== 2 && value.version !== 3) return null;
+    if (value.type === "key" && value.version === 2 && typeof value.publicKey === "string" &&
         value.publicKey.length === 87 && BASE64_URL.test(value.publicKey)) return value as unknown as GuardWire;
-    if (value.type === "sealed" && typeof value.to === "string" && isUserId(value.to) &&
+    if (value.type === "invite" && value.version === 3 && typeof value.publicKey === "string" &&
+        value.publicKey.length === 87 && BASE64_URL.test(value.publicKey) &&
+        typeof value.nonce === "string" && /^[a-f\d-]{36}$/i.test(value.nonce) &&
+        Array.isArray(value.actions) && value.actions.length > 0 &&
+        value.actions.every(action => GUARD_ACTIONS.includes(action))) return value as unknown as GuardWire;
+    if (value.type === "sealed" && value.version === 2 && typeof value.to === "string" && isUserId(value.to) &&
         typeof value.fromKey === "string" && value.fromKey.length === 87 && BASE64_URL.test(value.fromKey) &&
         typeof value.iv === "string" && value.iv.length === 16 && BASE64_URL.test(value.iv) &&
         typeof value.ciphertext === "string" && value.ciphertext.length > 20 && BASE64_URL.test(value.ciphertext)) {
@@ -57,7 +62,9 @@ export function parseGuardPayload(value: unknown): GuardCommand | GuardNotice | 
     if (typeof payload.ownerId !== "string" || !isUserId(payload.ownerId) ||
         typeof payload.createdAt !== "number" || !Number.isSafeInteger(payload.createdAt)) return null;
     if (payload.kind === "command" && GUARD_ACTIONS.includes(payload.action as GuardAction) &&
-        typeof payload.nonce === "string" && /^[a-f\d-]{36}$/i.test(payload.nonce)) return payload as unknown as GuardCommand;
+        typeof payload.nonce === "string" && /^[a-f\d-]{36}$/i.test(payload.nonce) &&
+        (payload.inviteNonce === undefined || (typeof payload.inviteNonce === "string" && /^[a-f\d-]{36}$/i.test(payload.inviteNonce))))
+        return payload as unknown as GuardCommand;
     if (payload.kind === "grant" && Array.isArray(payload.actions) &&
         payload.actions.every(action => GUARD_ACTIONS.includes(action))) return payload as unknown as GuardNotice;
     return null;

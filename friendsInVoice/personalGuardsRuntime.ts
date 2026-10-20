@@ -17,6 +17,7 @@ import type { GuardAction, GuardGrant } from "./personalGuardsTypes";
 export interface GuardsStore {
     personalGuards: GuardGrant[];
     knownGuardGrants: GuardGrant[];
+    pendingGuardInvites: { userId: string; actions: GuardAction[]; publicKey: string; nonce: string; }[];
     guardPeerKeys: { userId: string; publicKey: string; }[];
     guardBlocks: { userId: string; until: number; }[];
     guardReplay: { nonce: string; createdAt: number; }[];
@@ -75,15 +76,39 @@ export function getGrant(store: GuardsStore, userId: string): GuardAction[] {
 }
 
 export function setGrant(store: GuardsStore, userId: string, actions: GuardAction[]) {
+    const inviteNonce = store.personalGuards.find(grant => grant.userId === userId)?.inviteNonce;
     store.personalGuards = [
-        ...store.personalGuards.filter(grant => grant.userId !== userId).map(grant => ({ userId: grant.userId, actions: [...grant.actions] })),
-        { userId, actions: GUARD_ACTIONS.filter(action => actions.includes(action)) },
+        ...store.personalGuards.filter(grant => grant.userId !== userId).map(grant => ({ ...grant, actions: [...grant.actions] })),
+        { userId, actions: GUARD_ACTIONS.filter(action => actions.includes(action)), ...(inviteNonce ? { inviteNonce } : {}) },
     ];
 }
 
 export function revokeGuard(store: GuardsStore, userId: string) {
     store.personalGuards = store.personalGuards.filter(grant => grant.userId !== userId)
-        .map(grant => ({ userId: grant.userId, actions: [...grant.actions] }));
+        .map(grant => ({ ...grant, actions: [...grant.actions] }));
+}
+
+export async function sendGuardInvite(store: GuardsStore, guardianId: string) {
+    const actions = getGrant(store, guardianId);
+    if (!actions.length) { sendError("Choose at least one action before inviting this guardian."); return; }
+    try {
+        const nonce = crypto.randomUUID();
+        const publicKey = await publicKeyString(await getGuardKeys());
+        const text = serializeWire({ type: "invite", version: 3, publicKey, actions, nonce });
+        if (!await openDraft(guardianId, text)) return;
+        store.personalGuards = store.personalGuards.map(grant => grant.userId === guardianId ? { ...grant, inviteNonce: nonce } : grant);
+        showNotification({ title: "Personal Guards", body: "Invitation ready. Press Discord's Send button. The guardian can then accept it without sending a reply." });
+    } catch { sendError("Could not prepare the invitation. Nothing was sent."); }
+}
+
+export function acceptGuardInvite(store: GuardsStore, ownerId: string) {
+    const invite = store.pendingGuardInvites.find(item => item.userId === ownerId);
+    if (!invite) return;
+    store.guardPeerKeys = [...store.guardPeerKeys.filter(item => item.userId !== ownerId), { userId: ownerId, publicKey: invite.publicKey }];
+    store.knownGuardGrants = [...store.knownGuardGrants.filter(item => item.userId !== ownerId),
+        { userId: ownerId, actions: [...invite.actions], inviteNonce: invite.nonce }];
+    store.pendingGuardInvites = store.pendingGuardInvites.filter(item => item.userId !== ownerId);
+    showNotification({ title: "Personal Guards", body: "Invitation accepted. Join the owner's voice channel to use your allowed actions." });
 }
 
 function peerKey(store: GuardsStore, userId: string): string | undefined {
@@ -138,7 +163,8 @@ export async function sendGuardCommand(store: GuardsStore, ownerId: string, acti
     const key = peerKey(store, ownerId);
     if (!guardianId || !key) { sendError("No public key for this owner. Ask them to send an updated grant."); return; }
     try {
-        const wire = await sealGuardPayload(makeCommand(ownerId, action), await getGuardKeys(), key, guardianId, ownerId);
+        const inviteNonce = store.knownGuardGrants.find(grant => grant.userId === ownerId)?.inviteNonce;
+        const wire = await sealGuardPayload(makeCommand(ownerId, action, inviteNonce), await getGuardKeys(), key, guardianId, ownerId);
         await openDraft(ownerId, serializeWire(wire));
     } catch { sendError("Could not prepare the encrypted command. Nothing was sent."); }
 }
@@ -153,23 +179,29 @@ export function sharesVoice(userId: string): boolean {
     return !!channel && getVoiceChannel(userId) === channel;
 }
 
-function applyAction(action: GuardAction): (() => void) | null {
+async function applyAction(action: GuardAction): Promise<(() => void) | null> {
     if (action === "disconnect") {
         const ownId = UserStore.getCurrentUser()?.id;
         const oldChannel = ownId && getVoiceChannel(ownId);
         if (!oldChannel) return null;
         voiceChannelActions.selectVoiceChannel(null);
+        await new Promise(resolve => setTimeout(resolve, 250));
+        if (getVoiceChannel(ownId!) === oldChannel) return null;
         return () => voiceChannelActions.selectVoiceChannel(oldChannel);
     }
     if (action === "mute") {
         const previous = MediaEngineStore.isSelfMute();
         if (!voiceActions.toggleSelfMute) return null;
         if (!previous) voiceActions.toggleSelfMute();
+        await new Promise(resolve => setTimeout(resolve, 250));
+        if (!MediaEngineStore.isSelfMute()) return null;
         return () => { if (!previous && MediaEngineStore.isSelfMute()) voiceActions.toggleSelfMute?.(); };
     }
     const previous = MediaEngineStore.isSelfDeaf();
     if (!voiceActions.toggleSelfDeaf) return null;
     if (!previous) voiceActions.toggleSelfDeaf();
+    await new Promise(resolve => setTimeout(resolve, 250));
+    if (!MediaEngineStore.isSelfDeaf()) return null;
     return () => { if (!previous && MediaEngineStore.isSelfDeaf()) voiceActions.toggleSelfDeaf?.(); };
 }
 
@@ -182,6 +214,13 @@ export async function handleGuardMessage(store: GuardsStore, message: IncomingMe
     const me = UserStore.getCurrentUser()?.id;
     const senderId = message.author?.id;
     if (!me || !senderId || senderId === me) return;
+    if (wire.type === "invite") {
+        if (!await validatePublicKey(wire.publicKey)) return;
+        store.pendingGuardInvites = [...store.pendingGuardInvites.filter(item => item.userId !== senderId),
+            { userId: senderId, publicKey: wire.publicKey, actions: [...wire.actions], nonce: wire.nonce }];
+        showNotification({ title: "Personal Guards", body: `${guardDisplayName(senderId)} invited you to be their guardian. Click to accept or decline.`, onClick: openGuardsPage });
+        return;
+    }
     if (wire.type === "key") {
         if (!await validatePublicKey(wire.publicKey)) return;
         store.guardPeerKeys = [...store.guardPeerKeys.filter(peer => peer.userId !== senderId)
@@ -197,7 +236,10 @@ export async function handleGuardMessage(store: GuardsStore, message: IncomingMe
     const pinned = peerKey(store, senderId);
     let payload;
     try { payload = await openGuardPayload(wire, await getGuardKeys(), senderId, me); } catch { return; }
-    if (!payload) return;
+    if (!payload) {
+        if (getGrant(store, senderId).length) sendError(`Could not verify a guard message from ${guardDisplayName(senderId)}. Ask them to use your newest invitation.`);
+        return;
+    }
     if (payload.kind === "grant") {
         if (payload.ownerId !== senderId || Math.abs(Date.now() - payload.createdAt) > 7 * 24 * 60 * 60_000) return;
         store.guardPeerKeys = [...store.guardPeerKeys.filter(peer => peer.userId !== senderId)
@@ -210,12 +252,19 @@ export async function handleGuardMessage(store: GuardsStore, message: IncomingMe
         showNotification({ title: "Personal Guards", body: `${guardDisplayName(senderId)} updated your guard access. Click to see your available actions.`, onClick: openGuardsPage });
         return;
     }
-    if (payload.ownerId !== me || Math.abs(Date.now() - payload.createdAt) > 5 * 60_000) return;
-    if (!pinned || pinned !== wire.fromKey || !getGrant(store, senderId).includes(payload.action) || !sharesVoice(senderId)) return;
-    if (store.guardBlocks.some(block => block.userId === senderId && block.until > Date.now())) return;
-    if (store.guardReplay.some(entry => entry.nonce === payload.nonce)) return;
-    const undo = applyAction(payload.action);
-    if (!undo) return;
+    if (payload.ownerId !== me) { sendError("Guard command rejected: wrong account."); return; }
+    if (Math.abs(Date.now() - payload.createdAt) > 5 * 60_000) { sendError("Guard command expired. Check both devices' clocks and send a new one."); return; }
+    const grant = store.personalGuards.find(item => item.userId === senderId);
+    if (!grant?.actions.includes(payload.action)) { sendError("Guard command rejected: this action is not allowed for the sender."); return; }
+    if (grant.inviteNonce ? payload.inviteNonce !== grant.inviteNonce : !pinned || pinned !== wire.fromKey) {
+        sendError("Guard command rejected: invitation or secure key does not match. Send a new invitation."); return;
+    }
+    if (!sharesVoice(senderId)) { sendError("Guard command rejected: both people must be in the same voice channel."); return; }
+    if (store.guardBlocks.some(block => block.userId === senderId && block.until > Date.now())) { sendError("Guard commands from this person are temporarily blocked."); return; }
+    if (store.guardReplay.some(entry => entry.nonce === payload.nonce)) { sendError("Guard command rejected: duplicate message."); return; }
+    let undo: (() => void) | null;
+    try { undo = await applyAction(payload.action); } catch { sendError("Discord could not apply the requested voice action."); return; }
+    if (!undo) { sendError("Discord voice controls are unavailable for this action."); return; }
     store.guardReplay = [...store.guardReplay.filter(entry => Date.now() - entry.createdAt < 5 * 60_000)
         .map(entry => ({ nonce: entry.nonce, createdAt: entry.createdAt })), { nonce: payload.nonce, createdAt: Date.now() }];
     const event = { id: message.id, guardianId: senderId, action: payload.action, undo };

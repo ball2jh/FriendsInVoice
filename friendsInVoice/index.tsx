@@ -28,7 +28,7 @@ import { AlertsTab, MyListTab, RunAwayTab, VoiceTab, WatchedCard } from "./voice
 
 export { inList, isOnline, toggleInList } from "./notifications";
 
-const VERSION = "1.10.0";
+const VERSION = "1.11.0";
 const DONATE_URL = "https://paypal.me/mfsafadi";
 
 const cl = classNameFactory("vc-fiv-");
@@ -95,6 +95,7 @@ export const settings = definePluginSettings({
     },
     personalGuards: { type: OptionType.CUSTOM, default: [] as { userId: string; actions: ("mute" | "deafen" | "disconnect")[]; }[] },
     knownGuardGrants: { type: OptionType.CUSTOM, default: [] as { userId: string; actions: ("mute" | "deafen" | "disconnect")[]; }[] },
+    pendingGuardInvites: { type: OptionType.CUSTOM, default: [] as { userId: string; actions: ("mute" | "deafen" | "disconnect")[]; publicKey: string; nonce: string; }[] },
     guardBlocks: { type: OptionType.CUSTOM, default: [] as { userId: string; until: number; }[] },
     guardReplay: { type: OptionType.CUSTOM, default: [] as { nonce: string; createdAt: number; }[] },
     guardPeerKeys: { type: OptionType.CUSTOM, default: [] as { userId: string; publicKey: string; }[] },
@@ -178,7 +179,7 @@ function FriendsInVoicePage() {
     const focus = focusUserId;
     const data = useVoiceData(focus);
     const { notifyOnline, blacklist, notifyVoice } = settings.use(["notifyOnline", "blacklist", "notifyVoice"]);
-    settings.use(["personalGuards", "knownGuardGrants", "guardPeerKeys"]);
+    settings.use(["personalGuards", "knownGuardGrants", "guardPeerKeys", "pendingGuardInvites"]);
     const [tab, setTab] = useState<Tab>(requestedTab);
     const [, refreshGuards] = useReducer(value => value + 1, 0);
     const [rect, setRect] = useState(getContentRect);
